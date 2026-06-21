@@ -1,5 +1,5 @@
 /* Casa Tecno · Subtítulos — Service Worker (offline) */
-const CACHE = 'ct-subs-v2';
+const CACHE = 'ct-subs-v4';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 // Hosts de librerías/fuentes que cacheamos para uso offline.

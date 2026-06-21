@@ -89,7 +89,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v3 · karaoke</div>
+  <div class="tag">v4</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -152,10 +152,9 @@
 <div id="sizebar"><span class="szlbl">Tamaño de la app</span><input type="range" id="appZoom" min="90" max="180" step="5" value="130"><span class="szval mono" id="appZoomVal">130%</span></div>
 
 <script type="module">
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3';
-import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
-env.allowLocalModels = false;
+/* Las librerías pesadas (Whisper y ffmpeg) se cargan SOLO cuando se usan,
+   así la interfaz (selector de video, barras, etc.) funciona siempre. */
+let _fetchFile=null, _lib=null;
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
@@ -207,8 +206,10 @@ async function transcribe(){
   btn.disabled=true; setProg('prog',0);
   try{
     if(modelLoadedId!==modelId){
+      $('status').textContent='Cargando motor de voz…';
+      if(!_lib){ _lib=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3/+esm'); _lib.env.allowLocalModels=false; }
       $('status').textContent='Descargando modelo… (una sola vez)';
-      transcriber=await pipeline('automatic-speech-recognition',modelId,{device:hasGPU?'webgpu':'wasm',dtype:hasGPU?'fp32':'q8',progress_callback:p=>{if(p.status==='progress'&&p.total){setProg('prog',p.loaded/p.total*100);$('status').textContent='Descargando modelo… '+Math.round(p.loaded/p.total*100)+'%';}}});
+      transcriber=await _lib.pipeline('automatic-speech-recognition',modelId,{device:hasGPU?'webgpu':'wasm',dtype:hasGPU?'fp32':'q8',progress_callback:p=>{if(p.status==='progress'&&p.total){setProg('prog',p.loaded/p.total*100);$('status').textContent='Descargando modelo… '+Math.round(p.loaded/p.total*100)+'%';}}});
       modelLoadedId=modelId;
     }
     $('status').textContent='Extrayendo audio…'; setProg('prog',100);
@@ -244,9 +245,20 @@ function kwords(seg){
   const parts=seg.text.split(/\s+/).filter(Boolean);const dur=Math.max(0.3,seg.end-seg.start),step=dur/Math.max(1,parts.length);
   return parts.map((p,i)=>({text:p,start:seg.start+i*step,end:seg.start+(i+1)*step}));
 }
-async function extractAudio(file){const ff=await getFFmpeg();await ff.writeFile('in_audio',await fetchFile(file));await ff.exec(['-i','in_audio','-ar','16000','-ac','1','-c:a','pcm_s16le','-f','wav','out.wav']);const data=await ff.readFile('out.wav');return wavToFloat32(data.buffer);}
+async function extractAudio(file){const ff=await getFFmpeg();await ff.writeFile('in_audio',await _fetchFile(file));await ff.exec(['-i','in_audio','-ar','16000','-ac','1','-c:a','pcm_s16le','-f','wav','out.wav']);const data=await ff.readFile('out.wav');return wavToFloat32(data.buffer);}
 function wavToFloat32(buf){const dv=new DataView(buf);let off=12,dOff=-1,dLen=0;while(off<dv.byteLength-8){const id=String.fromCharCode(dv.getUint8(off),dv.getUint8(off+1),dv.getUint8(off+2),dv.getUint8(off+3));const size=dv.getUint32(off+4,true);if(id==='data'){dOff=off+8;dLen=size;break;}off+=8+size+(size%2);}if(dOff<0)throw new Error('No se pudo leer el audio');const n=Math.floor(dLen/2),o=new Float32Array(n);for(let i=0;i<n;i++)o[i]=dv.getInt16(dOff+i*2,true)/32768;return o;}
-async function getFFmpeg(){if(ffmpeg)return ffmpeg;ffmpeg=new FFmpeg();const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';await ffmpeg.load({coreURL:await toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});return ffmpeg;}
+async function getFFmpeg(){
+  if(ffmpeg)return ffmpeg;
+  const [m,u]=await Promise.all([
+    import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js'),
+    import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js')
+  ]);
+  _fetchFile=u.fetchFile;
+  ffmpeg=new m.FFmpeg();
+  const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+  await ffmpeg.load({coreURL:await u.toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await u.toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
+  return ffmpeg;
+}
 
 /* controles */
 function bind(id,prop,after){$(id).addEventListener('input',e=>{const el=e.target;style[prop]=el.type==='checkbox'?el.checked:(el.type==='range'||el.type==='number'?parseFloat(el.value):el.value);after&&after();lastSub=null;cap.dataset.seg='';render();});}
@@ -338,10 +350,10 @@ async function exportVideo(){
     const ff=await getFFmpeg();ff.on('progress',({progress})=>setProg('eprog',Math.min(99,progress*100)));
     $('estatus').textContent='Preparando fuentes…';await ff.createDir('/fonts').catch(()=>{});
     const used=new Set([style.font,...segments.map(s=>s.ov?.font).filter(Boolean),...overlays.map(o=>o.font)]);
-    for(const name of used){const f=FONTS.find(x=>x.name===name);if(!f)continue;try{await ff.writeFile('/fonts/'+name.replace(/\s/g,'_')+'.ttf',await fetchFile(f.ttf));}catch(e){console.warn('fuente',name,e);}}
+    for(const name of used){const f=FONTS.find(x=>x.name===name);if(!f)continue;try{await ff.writeFile('/fonts/'+name.replace(/\s/g,'_')+'.ttf',await _fetchFile(f.ttf));}catch(e){console.warn('fuente',name,e);}}
     $('estatus').textContent='Generando subtítulos…';
     const W=video.videoWidth||1080,H=video.videoHeight||1920;
-    await ff.writeFile('subs.ass',buildASS(W,H));await ff.writeFile('in.mp4',await fetchFile(videoFile));
+    await ff.writeFile('subs.ass',buildASS(W,H));await ff.writeFile('in.mp4',await _fetchFile(videoFile));
     $('estatus').textContent='Quemando y exportando…';
     await ff.exec(['-i','in.mp4','-vf','ass=subs.ass:fontsdir=/fonts','-c:v','libx264','-preset','veryfast','-crf',String($('crf').value),'-pix_fmt','yuv420p','-c:a','copy','-movflags','+faststart','out.mp4']);
     const data=await ff.readFile('out.mp4');const blob=new Blob([data.buffer],{type:'video/mp4'});const url=URL.createObjectURL(blob);
