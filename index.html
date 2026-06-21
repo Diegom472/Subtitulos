@@ -96,7 +96,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v8</div>
+  <div class="tag">v9</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -129,6 +129,7 @@
         <div><label>Modelo</label><select id="model"><option value="onnx-community/whisper-tiny">Tiny — rápido</option><option value="onnx-community/whisper-base" selected>Base — recomendado</option><option value="onnx-community/whisper-small">Small — más preciso</option></select></div>
         <div><label>Idioma del audio</label><select id="lang"><option value="spanish" selected>Español</option><option value="english">Inglés</option><option value="portuguese">Portugués</option></select></div>
       </div>
+      <div class="field" style="margin-top:8px"><label>Renglones por subtítulo (se ajusta al tamaño de fuente)</label><select id="rows"><option value="1">1 renglón</option><option value="2" selected>2 renglones</option><option value="3">3 renglones</option></select></div>
       <button id="transcribe" class="btn" style="width:100%;margin-top:8px">Generar subtítulos</button>
       <div class="bar"><i id="prog"></i></div>
       <div class="status" id="status">Cargá un video y tocá "Generar subtítulos".</div>
@@ -203,6 +204,7 @@ let videoFile=null, segments=[], overlays=[];
 let style={font:'Montserrat',subAnim:'pop',karaoke:false,hiColor:'#FFE14D',size:6,color:'#FFFFFF',ocolor:'#000000',obord:3,box:false,bcolor:'#000000',bop:60,bold:true,posv:85};
 let transcriber=null, modelLoadedId=null, ffmpeg=null, lastSub=null, raf=null;
 const activeOv=new Set();
+let rowsPerSub=2;
 
 $('dev').textContent=hasGPU?'WebGPU':'WASM';
 FONTS.forEach(f=>{const o=document.createElement('option');o.value=f.name;o.textContent=f.name;$('font').appendChild(o);});
@@ -227,6 +229,7 @@ function loadVideo(file){
 
 /* === WHISPER === */
 $('transcribe').addEventListener('click', transcribe);
+$('rows').addEventListener('change',e=>{ rowsPerSub=parseInt(e.target.value)||2; });
 async function transcribe(){
   const modelId=$('model').value, lang=$('lang').value, btn=$('transcribe');
   btn.disabled=true; setProg('prog',0);
@@ -248,20 +251,42 @@ async function transcribe(){
     else{
       const out=await transcriber(audio,{language:lang,task:'transcribe',chunk_length_s:30,stride_length_s:5,return_timestamps:true});
       const chunks=(out.chunks&&out.chunks.length)?out.chunks:[{timestamp:[0,video.duration||0],text:out.text}];
-      segments=chunks.filter(c=>c.text&&c.text.trim()).map((c,i)=>({id:'s'+i+Date.now(),start:c.timestamp[0]??0,end:c.timestamp[1]??((c.timestamp[0]||0)+2),text:c.text.trim(),words:null,ov:null}));
+      const base=chunks.filter(c=>c.text&&c.text.trim()).map((c,i)=>({id:'s'+i+Date.now(),start:c.timestamp[0]??0,end:c.timestamp[1]??((c.timestamp[0]||0)+2),text:c.text.trim(),words:null,ov:null}));
+      const mx=wordsPerSub();
+      segments=base.flatMap(s=>splitByWords(s,mx));
     }
     renderSegs(); switchTab('text');
     $('status').textContent='Listo: '+segments.length+' líneas.'+(wordChunks?' Karaoke disponible.':'');
   }catch(err){console.error(err);$('status').innerHTML='⚠️ '+(err.message||err);}
   finally{btn.disabled=false;}
 }
+function wordsPerSub(){
+  const W=video.videoWidth||1080,H=video.videoHeight||1920;
+  const fontPx=Math.max(8,style.size/100*H);
+  const usableW=W*0.90, avgCharW=fontPx*0.52;
+  const charsPerRow=Math.max(6,usableW/avgCharW);
+  const wordsPerRow=Math.max(1,charsPerRow/6);
+  return Math.max(1,Math.min(16,Math.round(wordsPerRow*rowsPerSub)));
+}
 function groupWords(ws){
+  const max=wordsPerSub();
   const words=ws.map(w=>({text:(w.text||'').trim(),start:w.timestamp?.[0],end:w.timestamp?.[1]})).filter(w=>w.text);
   let prev=0; words.forEach((w,i)=>{if(w.start==null)w.start=prev;if(w.end==null)w.end=(words[i+1]&&words[i+1].start)??(w.start+0.3);prev=w.end??prev;});
   const segs=[]; let cur=[];
-  const flush=()=>{if(!cur.length)return;segs.push({id:'s'+segs.length+Date.now(),start:cur[0].start,end:cur[cur.length-1].end,text:cur.map(w=>w.text).join(' '),words:cur.map(w=>({...w})),ov:null});cur=[];};
-  for(let i=0;i<words.length;i++){const w=words[i],p=cur[cur.length-1];if(p){const gap=w.start-p.end;if(cur.length>=6||gap>0.7||/[.!?…]$/.test(p.text)||(w.start-cur[0].start)>5)flush();}cur.push(w);}
+  const flush=()=>{if(!cur.length)return;segs.push({id:'s'+segs.length+Date.now()+Math.random().toString(36).slice(2,5),start:cur[0].start,end:cur[cur.length-1].end,text:cur.map(w=>w.text).join(' '),words:cur.map(w=>({...w})),ov:null});cur=[];};
+  for(let i=0;i<words.length;i++){
+    const w=words[i],p=cur[cur.length-1];
+    if(p){const gap=w.start-p.end;const sentence=/[.!?…]$/.test(p.text)&&cur.length>=Math.max(2,Math.round(max*0.6));if(cur.length>=max||gap>0.7||sentence||(w.start-cur[0].start)>6)flush();}
+    cur.push(w);
+  }
   flush(); return segs;
+}
+function splitByWords(seg,max){
+  const parts=seg.text.split(/\s+/).filter(Boolean);
+  if(parts.length<=max)return[seg];
+  const out=[],dur=Math.max(0.3,seg.end-seg.start),total=parts.length;
+  for(let i=0;i<total;i+=max){const chunk=parts.slice(i,i+max);out.push({id:'s'+i+'_'+Date.now()+Math.random().toString(36).slice(2,5),start:seg.start+dur*(i/total),end:seg.start+dur*Math.min(total,i+chunk.length)/total,text:chunk.join(' '),words:null,ov:null});}
+  return out;
 }
 function kwords(seg){
   if(seg.words&&seg.words.length){const j=seg.words.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();if(j===seg.text.replace(/\s+/g,' ').trim())return seg.words;}
@@ -369,12 +394,48 @@ function makeDraggable(node,o){dragHandler(node,(ph,pv)=>{o.posh=Math.round(ph);
 
 /* === segmentos === */
 $('addSeg').addEventListener('click',()=>{const t=video.currentTime||0;segments.push({id:'s'+Date.now(),start:+t.toFixed(2),end:+(t+2).toFixed(2),text:'Nuevo subtítulo',words:null,ov:null});segments.sort((a,b)=>a.start-b.start);renderSegs();render();});
+function splitSegment(seg,pos){
+  const txt=seg.text||''; pos=Math.max(0,Math.min(txt.length,pos|0));
+  const before=txt.slice(0,pos), after=txt.slice(pos);
+  const b=before.trim(), a=after.trim();
+  if(!b||!a){ return; }
+  const idx=segments.indexOf(seg); if(idx<0)return;
+  let s1,s2;
+  if(seg.words&&seg.words.length>1){
+    let n=before.split(/\s+/).filter(Boolean).length;
+    n=Math.max(1,Math.min(seg.words.length-1,n));
+    const w1=seg.words.slice(0,n),w2=seg.words.slice(n);
+    s1={...seg,text:w1.map(w=>w.text).join(' '),words:w1,end:w1[w1.length-1].end};
+    s2={id:'s'+Date.now()+Math.random().toString(36).slice(2,5),start:w2[0].start,end:w2[w2.length-1].end,text:w2.map(w=>w.text).join(' '),words:w2,ov:seg.ov?{...seg.ov}:null};
+  }else{
+    const frac=before.length/Math.max(1,txt.length);
+    const mid=seg.start+(seg.end-seg.start)*frac;
+    s1={...seg,text:b,end:mid,words:null};
+    s2={id:'s'+Date.now()+Math.random().toString(36).slice(2,5),start:mid,end:seg.end,text:a,words:null,ov:seg.ov?{...seg.ov}:null};
+  }
+  segments.splice(idx,1,s1,s2);
+  renderSegs(); cap.dataset.seg=''; render();
+}
+function reduceSegment(seg){
+  const idx=segments.indexOf(seg); if(idx<=0)return;
+  const prev=segments[idx-1];
+  prev.text=((prev.text||'')+' '+(seg.text||'')).replace(/\s+/g,' ').trim();
+  prev.end=seg.end;
+  if(prev.words&&seg.words)prev.words=prev.words.concat(seg.words); else prev.words=null;
+  segments.splice(idx,1);
+  renderSegs(); cap.dataset.seg=''; render();
+}
 function renderSegs(){
   const box=$('segs');box.innerHTML='';$('segCount').textContent=segments.length?segments.length+' líneas':'';$('emptyHint').style.display=segments.length?'none':'block';
   segments.forEach(seg=>{
     const d=document.createElement('div');d.className='card';d.dataset.id=seg.id;
-    d.innerHTML='<div class="t mono"><input type="number" step="0.1" value="'+seg.start.toFixed(2)+'" data-k="start"><span class="chip">→</span><input type="number" step="0.1" value="'+seg.end.toFixed(2)+'" data-k="end"><button class="x">✕</button></div><textarea data-k="text">'+esc(seg.text)+'</textarea><label class="mini" style="margin-top:8px;display:block"><input type="checkbox" class="ovToggle" style="width:auto;vertical-align:-2px" '+(seg.ov?'checked':'')+'> Estilo propio</label><div class="ov '+(seg.ov?'show':'')+'"><div class="field2"><div><label class="mini">Fuente</label><select data-ov="font">'+FONTS.map(f=>'<option '+((seg.ov?.font||style.font)===f.name?'selected':'')+'>'+f.name+'</option>').join('')+'</select></div><div><label class="mini">Tamaño %</label><input type="number" step="0.5" data-ov="size" value="'+(seg.ov?.size??style.size)+'"></div></div><div class="field2" style="margin-top:8px"><div><label class="mini">Color</label><input type="color" data-ov="color" value="'+(seg.ov?.color??style.color)+'"></div><div><label class="mini">Pos. V %</label><input type="number" data-ov="posv" value="'+(seg.ov?.posv??style.posv)+'"></div></div></div>';
+    d.innerHTML='<div class="t mono"><input type="number" step="0.1" value="'+seg.start.toFixed(2)+'" data-k="start"><span class="chip">→</span><input type="number" step="0.1" value="'+seg.end.toFixed(2)+'" data-k="end"><button class="x">✕</button></div><textarea data-k="text">'+esc(seg.text)+'</textarea><div class="row tight" style="margin-top:8px;align-items:center"><label class="mini" style="margin:0;flex:1"><input type="checkbox" class="ovToggle" style="width:auto;vertical-align:-2px" '+(seg.ov?'checked':'')+'> Estilo propio</label><button class="splitBtn" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:4px 9px;font-size:11px;border-radius:7px">Separar</button><button class="reduceBtn" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:4px 9px;font-size:11px;border-radius:7px">Reducir</button></div><div class="ov '+(seg.ov?'show':'')+'"><div class="field2"><div><label class="mini">Fuente</label><select data-ov="font">'+FONTS.map(f=>'<option '+((seg.ov?.font||style.font)===f.name?'selected':'')+'>'+f.name+'</option>').join('')+'</select></div><div><label class="mini">Tamaño %</label><input type="number" step="0.5" data-ov="size" value="'+(seg.ov?.size??style.size)+'"></div></div><div class="field2" style="margin-top:8px"><div><label class="mini">Color</label><input type="color" data-ov="color" value="'+(seg.ov?.color??style.color)+'"></div><div><label class="mini">Pos. V %</label><input type="number" data-ov="posv" value="'+(seg.ov?.posv??style.posv)+'"></div></div></div>';
     d.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('input',()=>{const k=inp.dataset.k;seg[k]=(k==='text')?inp.value:(parseFloat(inp.value)||0);cap.dataset.seg='';render();}));
+    const ta=d.querySelector('textarea');
+    const track=()=>{ta._pos=ta.selectionStart;};
+    ['keyup','click','select','input'].forEach(ev=>ta.addEventListener(ev,track));
+    d.querySelector('.splitBtn').addEventListener('click',()=>{seg.text=ta.value;splitSegment(seg,(ta._pos!=null?ta._pos:ta.selectionStart)||0);});
+    d.querySelector('.reduceBtn').addEventListener('click',()=>{reduceSegment(seg);});
     d.querySelector('.x').addEventListener('click',()=>{segments=segments.filter(s=>s.id!==seg.id);renderSegs();render();});
     const tg=d.querySelector('.ovToggle');tg.addEventListener('change',()=>{seg.ov=tg.checked?{font:style.font,size:style.size,color:style.color,posv:style.posv}:null;d.querySelector('.ov').classList.toggle('show',tg.checked);render();});
     d.querySelectorAll('[data-ov]').forEach(inp=>inp.addEventListener('input',()=>{if(!seg.ov)return;const k=inp.dataset.ov;seg.ov[k]=inp.type==='number'?parseFloat(inp.value):inp.value;render();}));
