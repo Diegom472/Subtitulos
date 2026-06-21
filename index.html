@@ -96,7 +96,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v6</div>
+  <div class="tag">v7</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -109,6 +109,11 @@
       <video id="video" playsinline class="hidden"></video>
       <div id="overlay" class="hidden"><div id="cap" class="cap"></div></div>
       <div id="placeholder">Ningún video cargado.<br>Tocá <b>Abrir</b> para elegir uno de tu teléfono.</div>
+    </div>
+
+    <div id="timeline" class="hidden" style="margin-top:10px">
+      <input type="range" id="seek" min="0" max="100" step="0.01" value="0">
+      <div class="row" style="justify-content:space-between;margin-top:2px"><span class="chip mono" id="tcur">0:00</span><span class="chip mono" id="tdur">0:00</span></div>
     </div>
 
     <div class="row" style="margin-top:12px">
@@ -214,7 +219,7 @@ fileInput.addEventListener('change', ()=>{ if(fileInput.files[0]) loadVideo(file
 function loadVideo(file){
   videoFile=file; video.src=URL.createObjectURL(file);
   video.classList.remove('hidden'); overlayBox.classList.remove('hidden'); $('placeholder').classList.add('hidden');
-  $('controls').classList.remove('hidden');
+  $('controls').classList.remove('hidden'); $('timeline').classList.remove('hidden');
   segments=[]; overlays=[]; renderSegs(); renderOvs();
   $('exportBtn').disabled=false; $('playBtn').disabled=false; $('pauseBtn').disabled=false;
   $('status').textContent='Video cargado. Tocá "Generar subtítulos".';
@@ -270,7 +275,12 @@ async function getFFmpeg(){
   const [m,u]=await Promise.all([import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js'),import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js')]);
   _fetchFile=u.fetchFile; ffmpeg=new m.FFmpeg();
   const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-  await ffmpeg.load({coreURL:await u.toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await u.toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
+  const wbase='https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+  await ffmpeg.load({
+    classWorkerURL:await u.toBlobURL(wbase+'/worker.js','text/javascript'),
+    coreURL:await u.toBlobURL(base+'/ffmpeg-core.js','text/javascript'),
+    wasmURL:await u.toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')
+  });
   return ffmpeg;
 }
 
@@ -293,6 +303,16 @@ video.addEventListener('play',()=>{ if(!raf) raf=requestAnimationFrame(loop); })
 $('playBtn').addEventListener('click',()=>{ video.play(); });
 $('pauseBtn').addEventListener('click',()=>{ video.pause(); });
 function loop(){ if(video.paused||video.ended){raf=null;return;} render(); raf=requestAnimationFrame(loop); }
+
+/* línea de tiempo */
+const seek=$('seek');
+function fmtT(t){t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+String(s).padStart(2,'0');}
+let seeking=false;
+video.addEventListener('loadedmetadata',()=>{ seek.max=video.duration||0; $('tdur').textContent=fmtT(video.duration); });
+video.addEventListener('timeupdate',()=>{ if(!seeking){ seek.value=video.currentTime; $('tcur').textContent=fmtT(video.currentTime); } });
+seek.addEventListener('input',()=>{ seeking=true; const t=parseFloat(seek.value); video.currentTime=t; $('tcur').textContent=fmtT(t); render(); });
+seek.addEventListener('change',()=>{ seeking=false; });
+seek.addEventListener('pointerup',()=>{ seeking=false; });
 function effStyle(seg){return seg&&seg.ov?{...style,...seg.ov}:style;}
 function styleNode(node,s,text,isOverlay){
   const h=video.clientHeight||360,px=s.size/100*h;
