@@ -16,6 +16,7 @@
   html,body{margin:0;height:100%}
   body{background:var(--bg);color:var(--txt);font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
   .mono{font-family:'JetBrains Mono',ui-monospace,monospace}
+  #err{display:none;position:fixed;top:0;left:0;right:0;z-index:100;background:var(--danger);color:#fff;padding:8px 12px;font:12px/1.4 ui-monospace,monospace;white-space:pre-wrap}
   header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:30}
   .logo{font-weight:800;letter-spacing:-.02em;font-size:16px} .logo span{color:var(--accent)}
   .tag{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:2px 8px;border-radius:99px;white-space:nowrap}
@@ -23,24 +24,24 @@
   #install{display:none;background:var(--accent);color:#04122e;padding:7px 12px;font-size:12px;border:none;border-radius:8px;font-weight:700;cursor:pointer}
   .device{font-size:11px;color:var(--muted)} .device b{color:var(--accent)}
   .offnote{background:var(--panel);border-bottom:1px solid var(--line);padding:8px 16px;font-size:12px;color:var(--muted)} .offnote b{color:var(--txt)}
-  main{display:grid;grid-template-columns:1fr 390px;gap:16px;padding:16px;max-width:1320px;margin:0 auto}
+  main{display:grid;grid-template-columns:1fr 390px;gap:16px;padding:16px;max-width:1320px;margin:0 auto;padding-bottom:72px}
   @media(max-width:900px){main{grid-template-columns:1fr}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
-  #drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:40px 20px;text-align:center;cursor:pointer;transition:.15s;color:var(--muted)}
-  #drop:hover,#drop.over{border-color:var(--accent);color:var(--txt);background:var(--panel2)} #drop b{color:var(--txt)}
-  .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;display:flex;justify-content:center;touch-action:none}
+  .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:200px;touch-action:none}
   video{max-width:100%;max-height:60vh;display:block}
+  #placeholder{color:var(--muted);font-size:14px;text-align:center;padding:30px 16px}
   #overlay{position:absolute;inset:0}
   .cap,.ovNode{position:absolute;left:50%;top:85%;transform:translate(-50%,-50%);text-align:center;max-width:92%;white-space:pre-wrap;line-height:1.15;cursor:grab;user-select:none}
   .cap:active,.ovNode:active{cursor:grabbing}
   .cap span{display:inline-block;transition:transform .09s ease}
   .cap .hi{color:var(--hi);transform:scale(1.13)}
   button{font-family:inherit;cursor:pointer;border:none;border-radius:9px;font-weight:600;transition:.15s}
-  .btn{background:var(--accent);color:#04122e;padding:11px 16px;font-size:14px}
+  .btn{background:var(--accent);color:#04122e;padding:12px 16px;font-size:15px}
   .btn:hover{filter:brightness(1.08)} .btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
   .btn.amber{background:var(--accent2);color:#3a2400}
   .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  .btn.big{flex:1}
   .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap} .row.tight{gap:6px}
   label{display:block;font-size:11px;color:var(--muted);margin:0 0 4px}
   select,input[type=text],input[type=number],textarea{width:100%;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-family:inherit;font-size:13px}
@@ -71,6 +72,10 @@
   .anchor{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;width:96px}
   .anchor button{background:var(--panel);border:1px solid var(--line);height:26px;font-size:10px;color:var(--muted)}
   .anchor button:hover{border-color:var(--accent);color:var(--txt)}
+  #sizebar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;align-items:center;gap:10px;padding:9px 14px;background:rgba(14,15,19,.96);border-top:1px solid var(--line)}
+  #sizebar .szlbl{font-size:13px;color:var(--muted);white-space:nowrap}
+  #sizebar input{flex:1}
+  #sizebar .szval{font-size:13px;color:var(--accent);width:48px;text-align:right}
   @keyframes anim-fade{from{opacity:0}to{opacity:1}}
   @keyframes anim-pop{from{opacity:0;transform:translate(-50%,-50%) scale(.55)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
   @keyframes anim-zoom{from{opacity:0;transform:translate(-50%,-50%) scale(1.6)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
@@ -78,18 +83,20 @@
   @keyframes anim-left{from{opacity:0;transform:translate(calc(-50% - 44px),-50%)}to{opacity:1;transform:translate(-50%,-50%)}}
   @keyframes anim-right{from{opacity:0;transform:translate(calc(-50% + 44px),-50%)}to{opacity:1;transform:translate(-50%,-50%)}}
   @media(prefers-reduced-motion:reduce){.cap,.ovNode{animation:none!important}}
-  main{padding-bottom:72px}
-  #sizebar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;align-items:center;gap:10px;padding:9px 14px;background:rgba(14,15,19,.96);border-top:1px solid var(--line)}
-  #sizebar .szlbl{font-size:13px;color:var(--muted);white-space:nowrap}
-  #sizebar input{flex:1}
-  #sizebar .szval{font-size:13px;color:var(--accent);width:48px;text-align:right}
 </style>
 </head>
 <body>
+<div id="err"></div>
+<script>
+  /* Captura de errores visible (clásico, corre antes del módulo) */
+  window.addEventListener('error', function(ev){var e=document.getElementById('err');if(e){e.style.display='block';e.textContent='Error: '+(ev.message||ev.error)+(ev.lineno?' (línea '+ev.lineno+')':'');}});
+  window.addEventListener('unhandledrejection', function(ev){var e=document.getElementById('err');if(e){e.style.display='block';e.textContent='Error: '+((ev.reason&&ev.reason.message)||ev.reason);}});
+</script>
+
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v4</div>
+  <div class="tag">v5</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -98,22 +105,31 @@
 
 <main>
   <section class="panel">
-    <input type="file" id="fileInput" accept="video/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
-    <div id="drop"><p style="font-size:15px;margin:0 0 4px"><b>Tocá para elegir un video</b></p><p style="margin:0">de tu galería o almacenamiento · MP4, MOV, WEBM</p></div>
-    <div id="player" class="hidden">
-      <div class="stage" id="stage"><video id="video" playsinline></video><div id="overlay"><div id="cap" class="cap"></div></div></div>
-      <div class="hint">Arrastrá el subtítulo o un cartel sobre el video para reubicarlo.</div>
-      <div class="field2" style="margin-top:12px">
+    <div class="stage" id="stage">
+      <video id="video" playsinline class="hidden"></video>
+      <div id="overlay" class="hidden"><div id="cap" class="cap"></div></div>
+      <div id="placeholder">Ningún video cargado.<br>Tocá <b>Abrir</b> para elegir uno de tu teléfono.</div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button id="openBtn" class="btn big">📂 Abrir</button>
+      <button id="exportBtn" class="btn amber big" disabled>⬇ Exportar</button>
+    </div>
+    <input type="file" id="fileInput" accept="video/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden">
+
+    <div id="controls" class="hidden">
+      <div class="field2" style="margin-top:14px">
         <div><label>Modelo</label><select id="model"><option value="onnx-community/whisper-tiny">Tiny — rápido</option><option value="onnx-community/whisper-base" selected>Base — recomendado</option><option value="onnx-community/whisper-small">Small — más preciso</option></select></div>
         <div><label>Idioma del audio</label><select id="lang"><option value="spanish" selected>Español</option><option value="english">Inglés</option><option value="portuguese">Portugués</option></select></div>
       </div>
-      <div class="row" style="margin-top:6px"><button id="transcribe" class="btn">Generar subtítulos</button><button id="changeVid" class="btn ghost">Cambiar video</button></div>
+      <button id="transcribe" class="btn" style="width:100%;margin-top:8px">Generar subtítulos</button>
       <div class="bar"><i id="prog"></i></div>
-      <div class="status" id="status">El modelo se descarga una sola vez y queda en caché.</div>
-      <div id="exportBox" class="hidden" style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">
-        <h2>Exportar</h2>
-        <div class="field"><label>Calidad <span class="val" id="crfVal">18 · alta</span></label><input type="range" id="crf" min="14" max="28" value="18"><div class="hint">14 = máxima calidad · 28 = más liviano</div></div>
-        <button id="export" class="btn amber">Exportar MP4</button>
+      <div class="status" id="status">Cargá un video y tocá "Generar subtítulos".</div>
+
+      <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+        <label>Calidad de exportación <span class="val" id="crfVal">18 · alta</span></label>
+        <input type="range" id="crf" min="14" max="28" value="18">
+        <div class="hint">14 = máxima calidad · 28 = más liviano. El botón <b>Exportar</b> está arriba.</div>
         <div class="bar"><i id="eprog"></i></div>
         <div class="status" id="estatus"></div><div id="result"></div>
       </div>
@@ -152,55 +168,58 @@
 <div id="sizebar"><span class="szlbl">Tamaño de la app</span><input type="range" id="appZoom" min="90" max="180" step="5" value="130"><span class="szval mono" id="appZoomVal">130%</span></div>
 
 <script type="module">
-/* Las librerías pesadas (Whisper y ffmpeg) se cargan SOLO cuando se usan,
-   así la interfaz (selector de video, barras, etc.) funciona siempre. */
-let _fetchFile=null, _lib=null;
-
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
-if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
-let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt = e; $('install').style.display='inline-block'; });
-$('install') && ($('install').onclick = async () => { if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; $('install').style.display='none'; } });
-window.addEventListener('appinstalled', () => { $('install').style.display='none'; $('offnote').classList.add('hidden'); });
-
-const FONTS = [
-  { name:'Montserrat', ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/Montserrat%5Bwght%5D.ttf' },
-  { name:'Anton',      ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/anton/Anton-Regular.ttf' },
-  { name:'Bebas Neue', ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/bebasneue/BebasNeue-Regular.ttf' },
-  { name:'Poppins',    ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/poppins/Poppins-Bold.ttf' },
-  { name:'Oswald',     ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/oswald/Oswald%5Bwght%5D.ttf' },
-  { name:'Roboto',     ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto%5Bwght%5D.ttf' },
-];
-const ANIMS = [{id:'none',label:'Ninguna'},{id:'fade',label:'Fundido'},{id:'pop',label:'Aparecer (pop)'},{id:'zoom',label:'Zoom'},{id:'up',label:'Desde abajo'},{id:'left',label:'Desde izquierda'},{id:'right',label:'Desde derecha'}];
-
-let videoFile=null, segments=[], overlays=[];
-let style={ font:'Montserrat', subAnim:'pop', karaoke:false, hiColor:'#FFE14D', size:6, color:'#FFFFFF', ocolor:'#000000', obord:3, box:false, bcolor:'#000000', bop:60, bold:true, posv:85 };
-let transcriber=null, modelLoadedId=null, ffmpeg=null, lastSub=null, raf=null;
-const activeOv=new Set();
-
+/* === refs primero (clave: $ debe existir antes de usarse) === */
 const $=id=>document.getElementById(id);
 const video=$('video'), cap=$('cap'), overlayBox=$('overlay');
 const hasGPU=!!navigator.gpu;
-$('dev').textContent=hasGPU?'WebGPU':'WASM';
+let _fetchFile=null, _lib=null;
 
+/* PWA */
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+let deferredPrompt=null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredPrompt=e; $('install').style.display='inline-block'; });
+$('install').onclick = async () => { if(deferredPrompt){ deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; $('install').style.display='none'; } };
+window.addEventListener('appinstalled', () => { $('install').style.display='none'; $('offnote').classList.add('hidden'); });
+
+const FONTS=[
+  {name:'Montserrat',ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/montserrat/Montserrat%5Bwght%5D.ttf'},
+  {name:'Anton',ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/anton/Anton-Regular.ttf'},
+  {name:'Bebas Neue',ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/bebasneue/BebasNeue-Regular.ttf'},
+  {name:'Poppins',ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/poppins/Poppins-Bold.ttf'},
+  {name:'Oswald',ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/oswald/Oswald%5Bwght%5D.ttf'},
+  {name:'Roboto',ttf:'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/roboto/Roboto%5Bwght%5D.ttf'},
+];
+const ANIMS=[{id:'none',label:'Ninguna'},{id:'fade',label:'Fundido'},{id:'pop',label:'Aparecer (pop)'},{id:'zoom',label:'Zoom'},{id:'up',label:'Desde abajo'},{id:'left',label:'Desde izquierda'},{id:'right',label:'Desde derecha'}];
+
+let videoFile=null, segments=[], overlays=[];
+let style={font:'Montserrat',subAnim:'pop',karaoke:false,hiColor:'#FFE14D',size:6,color:'#FFFFFF',ocolor:'#000000',obord:3,box:false,bcolor:'#000000',bop:60,bold:true,posv:85};
+let transcriber=null, modelLoadedId=null, ffmpeg=null, lastSub=null, raf=null;
+const activeOv=new Set();
+
+$('dev').textContent=hasGPU?'WebGPU':'WASM';
 FONTS.forEach(f=>{const o=document.createElement('option');o.value=f.name;o.textContent=f.name;$('font').appendChild(o);});
 $('font').value=style.font;
 ANIMS.forEach(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.label;$('subAnim').appendChild(o);});
 $('subAnim').value=style.subAnim;
 
-/* carga de video */
-const drop=$('drop'), fileInput=$('fileInput');
+/* === CARGA DE VIDEO === */
+const fileInput=$('fileInput');
 function pickFile(){ fileInput.value=''; fileInput.click(); }
-drop.addEventListener('click',pickFile);
-$('changeVid').addEventListener('click',pickFile);
-fileInput.addEventListener('change',()=>{ if(fileInput.files[0]) loadVideo(fileInput.files[0]); });
-drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
-drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
-drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0])loadVideo(e.dataTransfer.files[0]);});
-function loadVideo(file){videoFile=file;video.src=URL.createObjectURL(file);drop.classList.add('hidden');$('player').classList.remove('hidden');segments=[];overlays=[];renderSegs();renderOvs();$('exportBox').classList.add('hidden');$('status').textContent='Video cargado. Tocá "Generar subtítulos".';}
+$('openBtn').addEventListener('click', pickFile);
+$('placeholder').addEventListener('click', pickFile);
+fileInput.addEventListener('change', ()=>{ if(fileInput.files[0]) loadVideo(fileInput.files[0]); });
+function loadVideo(file){
+  videoFile=file; video.src=URL.createObjectURL(file);
+  video.classList.remove('hidden'); overlayBox.classList.remove('hidden'); $('placeholder').classList.add('hidden');
+  $('controls').classList.remove('hidden');
+  segments=[]; overlays=[]; renderSegs(); renderOvs();
+  $('exportBtn').disabled=false;
+  $('status').textContent='Video cargado. Tocá "Generar subtítulos".';
+}
 
-/* Whisper */
-$('transcribe').addEventListener('click',transcribe);
+/* === WHISPER === */
+$('transcribe').addEventListener('click', transcribe);
 async function transcribe(){
   const modelId=$('model').value, lang=$('lang').value, btn=$('transcribe');
   btn.disabled=true; setProg('prog',0);
@@ -216,25 +235,22 @@ async function transcribe(){
     const audio=await extractAudio(videoFile);
     $('status').textContent='Transcribiendo…';
     let wordChunks=null;
-    try{
-      const out=await transcriber(audio,{language:lang,task:'transcribe',return_timestamps:'word',chunk_length_s:30,stride_length_s:5});
-      if(out.chunks&&out.chunks.length&&out.chunks[0].timestamp) wordChunks=out.chunks;
-    }catch(e){ console.warn('sin timestamps por palabra, uso por frase:',e); }
+    try{ const out=await transcriber(audio,{language:lang,task:'transcribe',return_timestamps:'word',chunk_length_s:30,stride_length_s:5}); if(out.chunks&&out.chunks.length&&out.chunks[0].timestamp) wordChunks=out.chunks; }
+    catch(e){ console.warn('sin timestamps por palabra:',e); }
     if(wordChunks){ segments=groupWords(wordChunks); }
     else{
       const out=await transcriber(audio,{language:lang,task:'transcribe',chunk_length_s:30,stride_length_s:5,return_timestamps:true});
       const chunks=(out.chunks&&out.chunks.length)?out.chunks:[{timestamp:[0,video.duration||0],text:out.text}];
       segments=chunks.filter(c=>c.text&&c.text.trim()).map((c,i)=>({id:'s'+i+Date.now(),start:c.timestamp[0]??0,end:c.timestamp[1]??((c.timestamp[0]||0)+2),text:c.text.trim(),words:null,ov:null}));
     }
-    renderSegs(); switchTab('text'); $('exportBox').classList.remove('hidden');
-    $('status').textContent='Listo: '+segments.length+' líneas.'+(wordChunks?' Karaoke disponible.':' (sin tiempos por palabra; el karaoke repartirá parejo)');
-  }catch(err){console.error(err);$('status').innerHTML='⚠️ '+(err.message||err)+' — si menciona red/módulos, serví la app desde un servidor (no file://).';}
+    renderSegs(); switchTab('text');
+    $('status').textContent='Listo: '+segments.length+' líneas.'+(wordChunks?' Karaoke disponible.':'');
+  }catch(err){console.error(err);$('status').innerHTML='⚠️ '+(err.message||err);}
   finally{btn.disabled=false;}
 }
 function groupWords(ws){
   const words=ws.map(w=>({text:(w.text||'').trim(),start:w.timestamp?.[0],end:w.timestamp?.[1]})).filter(w=>w.text);
-  let prev=0;
-  words.forEach((w,i)=>{if(w.start==null)w.start=prev;if(w.end==null)w.end=(words[i+1]&&words[i+1].start)??(w.start+0.3);prev=w.end??prev;});
+  let prev=0; words.forEach((w,i)=>{if(w.start==null)w.start=prev;if(w.end==null)w.end=(words[i+1]&&words[i+1].start)??(w.start+0.3);prev=w.end??prev;});
   const segs=[]; let cur=[];
   const flush=()=>{if(!cur.length)return;segs.push({id:'s'+segs.length+Date.now(),start:cur[0].start,end:cur[cur.length-1].end,text:cur.map(w=>w.text).join(' '),words:cur.map(w=>({...w})),ov:null});cur=[];};
   for(let i=0;i<words.length;i++){const w=words[i],p=cur[cur.length-1];if(p){const gap=w.start-p.end;if(cur.length>=6||gap>0.7||/[.!?…]$/.test(p.text)||(w.start-cur[0].start)>5)flush();}cur.push(w);}
@@ -249,29 +265,25 @@ async function extractAudio(file){const ff=await getFFmpeg();await ff.writeFile(
 function wavToFloat32(buf){const dv=new DataView(buf);let off=12,dOff=-1,dLen=0;while(off<dv.byteLength-8){const id=String.fromCharCode(dv.getUint8(off),dv.getUint8(off+1),dv.getUint8(off+2),dv.getUint8(off+3));const size=dv.getUint32(off+4,true);if(id==='data'){dOff=off+8;dLen=size;break;}off+=8+size+(size%2);}if(dOff<0)throw new Error('No se pudo leer el audio');const n=Math.floor(dLen/2),o=new Float32Array(n);for(let i=0;i<n;i++)o[i]=dv.getInt16(dOff+i*2,true)/32768;return o;}
 async function getFFmpeg(){
   if(ffmpeg)return ffmpeg;
-  const [m,u]=await Promise.all([
-    import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js'),
-    import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js')
-  ]);
-  _fetchFile=u.fetchFile;
-  ffmpeg=new m.FFmpeg();
+  const [m,u]=await Promise.all([import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js'),import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js')]);
+  _fetchFile=u.fetchFile; ffmpeg=new m.FFmpeg();
   const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
   await ffmpeg.load({coreURL:await u.toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await u.toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
   return ffmpeg;
 }
 
-/* controles */
+/* === controles de diseño === */
 function bind(id,prop,after){$(id).addEventListener('input',e=>{const el=e.target;style[prop]=el.type==='checkbox'?el.checked:(el.type==='range'||el.type==='number'?parseFloat(el.value):el.value);after&&after();lastSub=null;cap.dataset.seg='';render();});}
 bind('font','font');bind('subAnim','subAnim');bind('karaoke','karaoke');bind('hiColor','hiColor');bind('color','color');bind('ocolor','ocolor');bind('obord','obord');bind('bcolor','bcolor');bind('bold','bold');
 bind('size','size',()=>$('sizeVal').textContent=style.size+'%');bind('posv','posv');
 bind('bop','bop',()=>$('bopVal').textContent=style.bop+'%');bind('box','box',()=>$('boxOpts').style.opacity=style.box?'1':'.4');
 $('crf').addEventListener('input',e=>{const v=e.target.value;$('crfVal').textContent=v+' · '+(v<=16?'máxima':v<=20?'alta':v<=24?'media':'liviana');});
 
-/* tabs */
+/* === tabs === */
 $('tabStyle').addEventListener('click',()=>switchTab('style'));$('tabText').addEventListener('click',()=>switchTab('text'));$('tabCard').addEventListener('click',()=>switchTab('card'));
 function switchTab(t){$('tabStyle').classList.toggle('on',t==='style');$('tabText').classList.toggle('on',t==='text');$('tabCard').classList.toggle('on',t==='card');$('paneStyle').classList.toggle('hidden',t!=='style');$('paneText').classList.toggle('hidden',t!=='text');$('paneCard').classList.toggle('hidden',t!=='card');}
 
-/* preview */
+/* === preview === */
 video.addEventListener('timeupdate',render);
 video.addEventListener('loadedmetadata',render);
 window.addEventListener('resize',render);
@@ -287,14 +299,14 @@ function styleNode(node,s,text,isOverlay){
   if(s.box){node.style.background=hexA(s.bcolor,(s.bop??60)/100);node.style.padding=(px*0.18)+'px '+(px*0.35)+'px';node.style.borderRadius=(px*0.12)+'px';node.style.textShadow='none';}
   else{node.style.background='transparent';node.style.padding='0';node.style.textShadow=ob>0?'0 2px 6px rgba(0,0,0,.5)':'none';}
 }
-function buildKaraoke(seg,st){const ws=kwords(seg);cap._words=ws;cap.dataset.seg=seg.id;cap.style.setProperty('--hi',style.hiColor);cap.innerHTML=ws.map((w,i)=>'<span data-i="'+i+'">'+esc(w.text)+'</span>').join(' ');cap._hi=-1;}
+function buildKaraoke(seg){const ws=kwords(seg);cap._words=ws;cap.dataset.seg=seg.id;cap.style.setProperty('--hi',style.hiColor);cap.innerHTML=ws.map((w,i)=>'<span data-i="'+i+'">'+esc(w.text)+'</span>').join(' ');cap._hi=-1;}
 function paintHighlight(seg){const ws=cap._words;if(!ws)return;const t=video.currentTime;let idx=ws.findIndex(w=>t>=w.start&&t<w.end);if(idx<0)idx=(t>=ws[ws.length-1].start)?ws.length-1:0;if(idx===cap._hi)return;cap._hi=idx;const sp=cap.children;for(let i=0;i<sp.length;i++)sp[i].className=(i===idx)?'hi':'';}
 function render(){
   const t=video.currentTime;
   const seg=segments.find(s=>t>=s.start&&t<=s.end)||null;
   if(seg){
     const st=effStyle(seg),changed=seg.id!==lastSub;
-    if(style.karaoke){styleNode(cap,st,null,false);if(cap.dataset.seg!==seg.id)buildKaraoke(seg,st);paintHighlight(seg);}
+    if(style.karaoke){styleNode(cap,st,null,false);if(cap.dataset.seg!==seg.id)buildKaraoke(seg);paintHighlight(seg);}
     else{styleNode(cap,st,seg.text,false);cap.dataset.seg='';}
     cap.style.display='block';
     if(changed){playAnim(cap,style.subAnim);lastSub=seg.id;}
@@ -305,12 +317,12 @@ function render(){
 function playAnim(node,kind){if(!kind||kind==='none')return;node.style.animation='none';void node.offsetWidth;node.style.animation='anim-'+kind+' .4s cubic-bezier(.2,.7,.3,1) both';}
 function hexA(hex,a){const n=hex.replace('#','');return'rgba('+parseInt(n.substr(0,2),16)+','+parseInt(n.substr(2,2),16)+','+parseInt(n.substr(4,2),16)+','+a+')';}
 
-/* arrastrar */
+/* === arrastrar === */
 function dragHandler(node,onMove){node.addEventListener('pointerdown',e=>{e.preventDefault();node.setPointerCapture(e.pointerId);const vr=video.getBoundingClientRect();const move=ev=>{let ph=(ev.clientX-vr.left)/vr.width*100,pv=(ev.clientY-vr.top)/vr.height*100;onMove(Math.max(2,Math.min(98,ph)),Math.max(2,Math.min(98,pv)));};const up=()=>{node.removeEventListener('pointermove',move);node.removeEventListener('pointerup',up);};node.addEventListener('pointermove',move);node.addEventListener('pointerup',up);});}
 dragHandler(cap,(ph,pv)=>{style.posv=Math.round(pv);$('posv').value=style.posv;render();});
 function makeDraggable(node,o){dragHandler(node,(ph,pv)=>{o.posh=Math.round(ph);o.posv=Math.round(pv);const c=document.querySelector('.card[data-id="'+o.id+'"]');if(c){const a=c.querySelector('[data-k="posh"]'),b=c.querySelector('[data-k="posv"]');if(a)a.value=o.posh;if(b)b.value=o.posv;}render();});}
 
-/* segmentos */
+/* === segmentos === */
 $('addSeg').addEventListener('click',()=>{const t=video.currentTime||0;segments.push({id:'s'+Date.now(),start:+t.toFixed(2),end:+(t+2).toFixed(2),text:'Nuevo subtítulo',words:null,ov:null});segments.sort((a,b)=>a.start-b.start);renderSegs();render();});
 function renderSegs(){
   const box=$('segs');box.innerHTML='';$('segCount').textContent=segments.length?segments.length+' líneas':'';$('emptyHint').style.display=segments.length?'none':'block';
@@ -325,7 +337,7 @@ function renderSegs(){
   });
 }
 
-/* carteles */
+/* === carteles === */
 $('addCard').addEventListener('click',()=>{const t=video.currentTime||0;overlays.push({id:'o'+Date.now(),text:'Tu texto',start:+t.toFixed(2),end:+(t+3).toFixed(2),font:'Anton',size:8,color:'#FFFFFF',ocolor:'#000000',obord:3,box:false,bcolor:'#000000',bop:60,bold:true,anim:'pop',posh:50,posv:20});renderOvs();render();});
 function renderOvs(){
   const box=$('ovs');box.innerHTML='';$('cardCount').textContent=overlays.length?overlays.length+' carteles':'';$('cardHint').style.display=overlays.length?'none':'block';
@@ -341,11 +353,12 @@ function renderOvs(){
 }
 function esc(s){return s.replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-/* exportar */
-$('export').addEventListener('click',exportVideo);
+/* === exportar === */
+$('exportBtn').addEventListener('click', exportVideo);
 async function exportVideo(){
-  if(!segments.length&&!overlays.length){$('estatus').textContent='No hay subtítulos ni carteles.';return;}
-  const btn=$('export');btn.disabled=true;setProg('eprog',0);$('result').innerHTML='';
+  if(!videoFile){$('estatus').textContent='Primero cargá un video.';return;}
+  if(!segments.length&&!overlays.length){$('estatus').textContent='No hay subtítulos ni carteles para exportar.';return;}
+  const btn=$('exportBtn');btn.disabled=true;setProg('eprog',0);$('result').innerHTML='';
   try{
     const ff=await getFFmpeg();ff.on('progress',({progress})=>setProg('eprog',Math.min(99,progress*100)));
     $('estatus').textContent='Preparando fuentes…';await ff.createDir('/fonts').catch(()=>{});
@@ -363,7 +376,7 @@ async function exportVideo(){
   finally{btn.disabled=false;}
 }
 
-/* ASS */
+/* === ASS === */
 function assColor(hex,op=1){const n=hex.replace('#','');const a=Math.round((1-op)*255).toString(16).padStart(2,'0');return('&H'+a+n.substr(4,2)+n.substr(2,2)+n.substr(0,2)+'&').toUpperCase();}
 function assTime(t){t=Math.max(0,t);const h=Math.floor(t/3600);t-=h*3600;const m=Math.floor(t/60);t-=m*60;const s=Math.floor(t);const cs=Math.round((t-s)*100);return h+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+'.'+String(cs).padStart(2,'0');}
 function styleLine(name,s,H){const fs=Math.round((s.size/100)*H);const box=!!s.box;const outCol=box?assColor(s.bcolor,(s.bop??60)/100):assColor(s.ocolor,1);const bStyle=box?3:1;const out=box?Math.max(8,(s.obord||0)*4):(s.obord||0);return 'Style: '+name+','+s.font+','+fs+','+assColor(s.color)+',&H000000FF&,'+outCol+',&H80000000&,'+(s.bold?-1:0)+',0,0,0,100,100,0,0,'+bStyle+','+out+',0,5,40,40,40,1';}
@@ -395,7 +408,7 @@ function buildASS(W,H){
 }
 function setProg(id,p){$(id).style.width=p+'%';}
 
-/* tamaño de la app */
+/* === tamaño de la app === */
 const appEl=document.getElementById('app'), zoomEl=$('appZoom');
 function applyZoom(v){ appEl.style.zoom=(v/100); $('appZoomVal').textContent=v+'%'; try{localStorage.setItem('ctZoom',v);}catch(e){} }
 let z=130; try{const s=localStorage.getItem('ctZoom'); if(s)z=parseInt(s);}catch(e){}
