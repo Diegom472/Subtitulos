@@ -96,7 +96,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v7</div>
+  <div class="tag">v8</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -268,7 +268,28 @@ function kwords(seg){
   const parts=seg.text.split(/\s+/).filter(Boolean);const dur=Math.max(0.3,seg.end-seg.start),step=dur/Math.max(1,parts.length);
   return parts.map((p,i)=>({text:p,start:seg.start+i*step,end:seg.start+(i+1)*step}));
 }
-async function extractAudio(file){const ff=await getFFmpeg();await ff.writeFile('in_audio',await _fetchFile(file));await ff.exec(['-i','in_audio','-ar','16000','-ac','1','-c:a','pcm_s16le','-f','wav','out.wav']);const data=await ff.readFile('out.wav');return wavToFloat32(data.buffer);}
+async function extractAudio(file){
+  // 1) Motor de audio nativo del navegador (rápido, sin ffmpeg)
+  try{
+    const buf=await file.arrayBuffer();
+    const AC=window.AudioContext||window.webkitAudioContext;
+    const ac=new AC();
+    const decoded=await ac.decodeAudioData(buf.slice(0));
+    if(ac.close)ac.close();
+    const off=new OfflineAudioContext(1,Math.max(1,Math.ceil(decoded.duration*16000)),16000);
+    const src=off.createBufferSource();src.buffer=decoded;src.connect(off.destination);src.start();
+    const rendered=await off.startRendering();
+    return rendered.getChannelData(0);
+  }catch(e){
+    console.warn('Web Audio falló, uso ffmpeg:',e);
+    // 2) Respaldo con ffmpeg
+    const ff=await getFFmpeg();
+    await ff.writeFile('in_audio',await _fetchFile(file));
+    await ff.exec(['-i','in_audio','-ar','16000','-ac','1','-c:a','pcm_s16le','-f','wav','out.wav']);
+    const data=await ff.readFile('out.wav');
+    return wavToFloat32(data.buffer);
+  }
+}
 function wavToFloat32(buf){const dv=new DataView(buf);let off=12,dOff=-1,dLen=0;while(off<dv.byteLength-8){const id=String.fromCharCode(dv.getUint8(off),dv.getUint8(off+1),dv.getUint8(off+2),dv.getUint8(off+3));const size=dv.getUint32(off+4,true);if(id==='data'){dOff=off+8;dLen=size;break;}off+=8+size+(size%2);}if(dOff<0)throw new Error('No se pudo leer el audio');const n=Math.floor(dLen/2),o=new Float32Array(n);for(let i=0;i<n;i++)o[i]=dv.getInt16(dOff+i*2,true)/32768;return o;}
 async function getFFmpeg(){
   if(ffmpeg)return ffmpeg;
