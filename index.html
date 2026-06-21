@@ -78,9 +78,15 @@
   @keyframes anim-left{from{opacity:0;transform:translate(calc(-50% - 44px),-50%)}to{opacity:1;transform:translate(-50%,-50%)}}
   @keyframes anim-right{from{opacity:0;transform:translate(calc(-50% + 44px),-50%)}to{opacity:1;transform:translate(-50%,-50%)}}
   @media(prefers-reduced-motion:reduce){.cap,.ovNode{animation:none!important}}
+  main{padding-bottom:72px}
+  #sizebar{position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;align-items:center;gap:10px;padding:9px 14px;background:rgba(14,15,19,.96);border-top:1px solid var(--line)}
+  #sizebar .szlbl{font-size:13px;color:var(--muted);white-space:nowrap}
+  #sizebar input{flex:1}
+  #sizebar .szval{font-size:13px;color:var(--accent);width:48px;text-align:right}
 </style>
 </head>
 <body>
+<div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
   <div class="tag">v3 · karaoke</div>
@@ -92,7 +98,8 @@
 
 <main>
   <section class="panel">
-    <div id="drop"><p style="font-size:15px;margin:0 0 4px"><b>Arrastrá tu video acá</b></p><p style="margin:0">o tocá para elegirlo · MP4, MOV, WEBM</p></div>
+    <input type="file" id="fileInput" accept="video/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none">
+    <div id="drop"><p style="font-size:15px;margin:0 0 4px"><b>Tocá para elegir un video</b></p><p style="margin:0">de tu galería o almacenamiento · MP4, MOV, WEBM</p></div>
     <div id="player" class="hidden">
       <div class="stage" id="stage"><video id="video" playsinline></video><div id="overlay"><div id="cap" class="cap"></div></div></div>
       <div class="hint">Arrastrá el subtítulo o un cartel sobre el video para reubicarlo.</div>
@@ -141,6 +148,8 @@
     </div>
   </aside>
 </main>
+</div>
+<div id="sizebar"><span class="szlbl">Tamaño de la app</span><input type="range" id="appZoom" min="90" max="180" step="5" value="130"><span class="szval mono" id="appZoomVal">130%</span></div>
 
 <script type="module">
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3';
@@ -181,13 +190,14 @@ ANIMS.forEach(a=>{const o=document.createElement('option');o.value=a.id;o.textCo
 $('subAnim').value=style.subAnim;
 
 /* carga de video */
-const drop=$('drop');
+const drop=$('drop'), fileInput=$('fileInput');
+function pickFile(){ fileInput.value=''; fileInput.click(); }
 drop.addEventListener('click',pickFile);
+$('changeVid').addEventListener('click',pickFile);
+fileInput.addEventListener('change',()=>{ if(fileInput.files[0]) loadVideo(fileInput.files[0]); });
 drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over');});
 drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
 drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0])loadVideo(e.dataTransfer.files[0]);});
-function pickFile(){const inp=document.createElement('input');inp.type='file';inp.accept='video/*';inp.onchange=()=>{if(inp.files[0])loadVideo(inp.files[0]);};inp.click();}
-$('changeVid').addEventListener('click',pickFile);
 function loadVideo(file){videoFile=file;video.src=URL.createObjectURL(file);drop.classList.add('hidden');$('player').classList.remove('hidden');segments=[];overlays=[];renderSegs();renderOvs();$('exportBox').classList.add('hidden');$('status').textContent='Video cargado. Tocá "Generar subtítulos".';}
 
 /* Whisper */
@@ -372,6 +382,13 @@ function buildASS(W,H){
   return head+ev.join('\n')+'\n';
 }
 function setProg(id,p){$(id).style.width=p+'%';}
+
+/* tamaño de la app */
+const appEl=document.getElementById('app'), zoomEl=$('appZoom');
+function applyZoom(v){ appEl.style.zoom=(v/100); $('appZoomVal').textContent=v+'%'; try{localStorage.setItem('ctZoom',v);}catch(e){} }
+let z=130; try{const s=localStorage.getItem('ctZoom'); if(s)z=parseInt(s);}catch(e){}
+zoomEl.value=z; applyZoom(z);
+zoomEl.addEventListener('input',()=>applyZoom(parseInt(zoomEl.value)));
 </script>
 </body>
 </html>
