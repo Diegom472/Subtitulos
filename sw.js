@@ -1,5 +1,5 @@
 /* Casa Tecno · Subtítulos — Service Worker */
-const CACHE = 'ct-subs-v5';
+const CACHE = 'ct-subs-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 const RUNTIME = ['cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
