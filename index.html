@@ -96,7 +96,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v9</div>
+  <div class="tag">v10</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -206,7 +206,7 @@ let transcriber=null, modelLoadedId=null, ffmpeg=null, lastSub=null, raf=null;
 const activeOv=new Set();
 let rowsPerSub=2;
 
-$('dev').textContent=hasGPU?'WebGPU':'WASM';
+pickDevice().then(d=>{ $('dev').textContent=d==='webgpu'?'WebGPU':'WASM'; });
 FONTS.forEach(f=>{const o=document.createElement('option');o.value=f.name;o.textContent=f.name;$('font').appendChild(o);});
 $('font').value=style.font;
 ANIMS.forEach(a=>{const o=document.createElement('option');o.value=a.id;o.textContent=a.label;$('subAnim').appendChild(o);});
@@ -230,6 +230,10 @@ function loadVideo(file){
 /* === WHISPER === */
 $('transcribe').addEventListener('click', transcribe);
 $('rows').addEventListener('change',e=>{ rowsPerSub=parseInt(e.target.value)||2; });
+async function pickDevice(){
+  if(navigator.gpu){ try{ const a=await navigator.gpu.requestAdapter(); if(a) return 'webgpu'; }catch(e){} }
+  return 'wasm';
+}
 async function transcribe(){
   const modelId=$('model').value, lang=$('lang').value, btn=$('transcribe');
   btn.disabled=true; setProg('prog',0);
@@ -237,8 +241,17 @@ async function transcribe(){
     if(modelLoadedId!==modelId){
       $('status').textContent='Cargando motor de voz…';
       if(!_lib){ _lib=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3/+esm'); _lib.env.allowLocalModels=false; }
+      const prog=p=>{if(p.status==='progress'&&p.total){setProg('prog',p.loaded/p.total*100);$('status').textContent='Descargando modelo… '+Math.round(p.loaded/p.total*100)+'%';}};
+      const device=await pickDevice();
+      $('dev').textContent=device==='webgpu'?'WebGPU':'WASM';
       $('status').textContent='Descargando modelo… (una sola vez)';
-      transcriber=await _lib.pipeline('automatic-speech-recognition',modelId,{device:hasGPU?'webgpu':'wasm',dtype:hasGPU?'fp32':'q8',progress_callback:p=>{if(p.status==='progress'&&p.total){setProg('prog',p.loaded/p.total*100);$('status').textContent='Descargando modelo… '+Math.round(p.loaded/p.total*100)+'%';}}});
+      try{
+        transcriber=await _lib.pipeline('automatic-speech-recognition',modelId,{device,dtype:device==='webgpu'?'fp32':'q8',progress_callback:prog});
+      }catch(e){
+        console.warn('Falló '+device+', uso WASM:',e);
+        $('dev').textContent='WASM'; $('status').textContent='Modo compatible (WASM)…';
+        transcriber=await _lib.pipeline('automatic-speech-recognition',modelId,{device:'wasm',dtype:'q8',progress_callback:prog});
+      }
       modelLoadedId=modelId;
     }
     $('status').textContent='Extrayendo audio…'; setProg('prog',100);
