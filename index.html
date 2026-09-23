@@ -116,7 +116,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v16</div>
+  <div class="tag">v17</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -403,7 +403,7 @@ function switchTab(t){$('tabStyle').classList.toggle('on',t==='style');$('tabTex
 video.addEventListener('timeupdate',render);
 video.addEventListener('loadedmetadata',render);
 window.addEventListener('resize',render);
-function syncOverlay(){ const l=video.offsetLeft,t=video.offsetTop,w=video.offsetWidth,h=video.offsetHeight; [overlayBox,$('guides')].forEach(el=>{ if(!el)return; el.style.left=l+'px'; el.style.top=t+'px'; el.style.width=w+'px'; el.style.height=h+'px'; }); }
+function syncOverlay(){ const st=$('stage'); if(!st)return; const sw=st.offsetWidth||1,sh=st.offsetHeight||1,vw=video.offsetWidth,vh=video.offsetHeight; const L=(sw-vw)/2/sw*100,T=(sh-vh)/2/sh*100,Wp=vw/sw*100,Hp=vh/sh*100; [overlayBox,$('guides')].forEach(el=>{ if(!el)return; el.style.left=L+'%'; el.style.top=T+'%'; el.style.width=Wp+'%'; el.style.height=Hp+'%'; }); }
 try{ new ResizeObserver(()=>syncOverlay()).observe(video); }catch(e){}
 window.addEventListener('resize',syncOverlay);
 video.addEventListener('play',()=>{ if(!raf) raf=requestAnimationFrame(loop); });
@@ -711,7 +711,7 @@ async function doExport(){
     let vstream=null; try{ vstream=video.captureStream?video.captureStream():(video.mozCaptureStream?video.mozCaptureStream():null); }catch(e){}
     const tracks=[cstream.getVideoTracks()[0]]; if(vstream)vstream.getAudioTracks().forEach(tr=>tracks.push(tr));
     const mixed=new MediaStream(tracks);
-    const mime=['video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+    const mime=['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','video/mp4'].find(m=>MediaRecorder.isTypeSupported(m))||'';
     const ext=mime.indexOf('mp4')>=0?'mp4':'webm';
     const chunks=[]; let rec;
     try{ rec=new MediaRecorder(mixed,mime?{mimeType:mime,videoBitsPerSecond:Math.min(16e6,Math.round(W*H*4))}:undefined); }
@@ -721,9 +721,10 @@ async function doExport(){
     let completed=false; video.addEventListener('ended',()=>{completed=true;},{once:true});
     $('estatus').textContent='Grabando en tiempo real… (dura lo que el video; suena el audio)';
     video.pause(); video.currentTime=0;
-    await new Promise(r=>{ const on=()=>{ video.removeEventListener('seeked',on); r(); }; video.addEventListener('seeked',on); setTimeout(r,600); });
+    await new Promise(r=>{ const on=()=>{ video.removeEventListener('seeked',on); r(); }; video.addEventListener('seeked',on); setTimeout(r,800); });
+    try{ctx.drawImage(video,0,0,W,H);}catch(e){} drawOverlaysCanvas(ctx,0,W,H);
     let raf2=null; const draw=()=>{ if(!ffExporting)return; try{ctx.drawImage(video,0,0,W,H);}catch(e){} drawOverlaysCanvas(ctx,video.currentTime,W,H); if(video.duration)setProg('eprog',Math.min(99,video.currentTime/video.duration*100)); raf2=requestAnimationFrame(draw); };
-    rec.start(); draw(); try{ await video.play(); }catch(e){}
+    rec.start(1000); draw(); try{ await video.play(); }catch(e){}
     await new Promise(res=>{ const iv=setInterval(()=>{ if(completed||!ffExporting){ clearInterval(iv); res(); } },150); });
     if(raf2)cancelAnimationFrame(raf2);
     try{ if(rec.state!=='inactive')rec.stop(); }catch(e){}
