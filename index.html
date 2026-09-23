@@ -116,7 +116,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v14</div>
+  <div class="tag">v15</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -641,33 +641,97 @@ function openExportModal(){
   $('expModal').classList.remove('hidden');
 }
 function closeExportModal(){ $('expModal').classList.add('hidden'); }
-function cancelExport(){
-  if(ffExporting){ ffExporting=false; try{ ffmpeg&&ffmpeg.terminate&&ffmpeg.terminate(); }catch(e){} ffmpeg=null; $('estatus').textContent='Cancelado.'; setProg('eprog',0); $('expGo').disabled=false; $('expName').disabled=false; }
-  else closeExportModal();
+function cancelExport(){ if(ffExporting){ ffExporting=false; } else closeExportModal(); }
+function wrapLines(ctx,text,maxW){
+  const words=(text||'').split(/\s+/).filter(Boolean); const lines=[]; let cur='';
+  for(const w of words){ const test=cur?cur+' '+w:w; if(ctx.measureText(test).width>maxW && cur){ lines.push(cur); cur=w; } else cur=test; }
+  if(cur)lines.push(cur); return lines.length?lines:[''];
+}
+function roundRect(ctx,x,y,w,h,r){ r=Math.max(0,Math.min(r,h/2,w/2)); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function drawStyledText(ctx,s,item,t,W,H,isOverlay){
+  const px=Math.max(6,s.size/100*H), family=s.font, weight=s.bold?700:400;
+  ctx.font=weight+' '+px+'px "'+family+'", sans-serif'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  const margin=isOverlay?0:(style.safe||0);
+  const maxW=(isOverlay?0.92:(1-2*margin/100))*W;
+  const cx=(isOverlay?(s.posh??50):50)/100*W;
+  const cy=(isOverlay?(s.posv??20):Math.max(margin,Math.min(100-margin,(s.posv??85))))/100*H;
+  const lineH=px*1.18, karaoke=!isOverlay&&style.karaoke;
+  let lines;
+  if(karaoke){
+    const ws=kwords(item); let act=ws.findIndex(w=>t>=w.start&&t<w.end); if(act<0)act=(t>=ws[ws.length-1].start)?ws.length-1:0;
+    lines=[]; let cur=[],curw=0;
+    ws.forEach((w,i)=>{ const wd=ctx.measureText((cur.length?' ':'')+w.text).width; if(curw+wd>maxW&&cur.length){ lines.push(cur); cur=[]; curw=0; } cur.push({text:w.text,active:i===act}); curw+=ctx.measureText((cur.length>1?' ':'')+w.text).width; });
+    if(cur.length)lines.push(cur);
+  } else { lines=wrapLines(ctx,item.text,maxW).map(l=>[{text:l,active:false}]); }
+  const blockH=lines.length*lineH;
+  const kind=isOverlay?s.anim:style.subAnim;
+  const p=Math.max(0,Math.min(1,(t-item.start)/0.35)), e=1-Math.pow(1-p,2);
+  ctx.save(); ctx.translate(cx,cy); let alpha=1;
+  if(kind==='fade')alpha=e;
+  else if(kind==='pop'){alpha=e;const sc=0.55+0.45*e;ctx.scale(sc,sc);}
+  else if(kind==='zoom'){alpha=e;const sc=1.6-0.6*e;ctx.scale(sc,sc);}
+  else if(kind==='up'){alpha=e;ctx.translate(0,(1-e)*H*0.05);}
+  else if(kind==='left'){alpha=e;ctx.translate(-(1-e)*W*0.12,0);}
+  else if(kind==='right'){alpha=e;ctx.translate((1-e)*W*0.12,0);}
+  ctx.globalAlpha=alpha;
+  const gap=ctx.measureText(' ').width, ob=(s.obord||0);
+  let y=-blockH/2+px*0.9;
+  lines.forEach(line=>{
+    const widths=line.map(seg=>ctx.measureText(seg.text).width);
+    const totalW=widths.reduce((a,b)=>a+b,0)+gap*(line.length-1);
+    if(s.box){ ctx.save(); ctx.globalAlpha=alpha*((s.bop??60)/100); ctx.fillStyle=s.bcolor; const padX=px*0.35; roundRect(ctx,-totalW/2-padX,y-px*0.86,totalW+padX*2,px*1.12,px*0.12); ctx.fill(); ctx.restore(); }
+    let x=-totalW/2;
+    line.forEach((seg,i)=>{
+      if(ob>0){ ctx.lineWidth=ob*1.5; ctx.strokeStyle=s.ocolor; ctx.lineJoin='round'; ctx.strokeText(seg.text,x,y); }
+      ctx.fillStyle=seg.active?style.hiColor:s.color; ctx.fillText(seg.text,x,y);
+      x+=widths[i]+gap;
+    });
+    y+=lineH;
+  });
+  ctx.restore();
+}
+function drawOverlaysCanvas(ctx,t,W,H){
+  const seg=segments.find(s=>t>=s.start&&t<=s.end);
+  if(seg) drawStyledText(ctx,effStyle(seg),seg,t,W,H,false);
+  overlays.forEach(o=>{ if(t>=o.start&&t<=o.end) drawStyledText(ctx,o,o,t,W,H,true); });
 }
 async function doExport(){
   const name=(($('expName').value||'subtitulado').trim().replace(/[\\/:*?"<>|]+/g,'_'))||'subtitulado';
-  $('expGo').disabled=true; $('expName').disabled=true;
-  $('expBarWrap').style.display='block'; setProg('eprog',0); $('result').innerHTML=''; ffExporting=true;
+  if(!window.MediaRecorder){ $('estatus').innerHTML='⚠️ Tu navegador no puede grabar video.'; return; }
+  $('expGo').disabled=true; $('expName').disabled=true; $('expBarWrap').style.display='block'; setProg('eprog',0); $('result').innerHTML=''; ffExporting=true;
   try{
-    $('estatus').textContent='Cargando ffmpeg… (la primera vez puede tardar)';
-    const ff=await getFFmpeg(); if(!ffExporting)return;
-    ff.on('progress',({progress})=>{ if(ffExporting) setProg('eprog',Math.min(99,Math.max(0,progress*100))); });
-    $('estatus').textContent='Preparando fuentes…'; await ff.createDir('/fonts').catch(()=>{});
-    const used=new Set([style.font,...segments.map(s=>s.ov?.font).filter(Boolean),...overlays.map(o=>o.font)]);
-    for(const nm of used){const f=FONTS.find(x=>x.name===nm);if(!f)continue;try{await ff.writeFile('/fonts/'+nm.replace(/\s/g,'_')+'.ttf',await _fetchFile(f.ttf));}catch(e){}}
-    if(!ffExporting)return;
-    $('estatus').textContent='Generando subtítulos…';
     const W=video.videoWidth||1080,H=video.videoHeight||1920;
-    await ff.writeFile('subs.ass',buildASS(W,H)); await ff.writeFile('in.mp4',await _fetchFile(videoFile)); if(!ffExporting)return;
-    $('estatus').textContent='Codificando el video… (puede tardar en el celu)';
-    await ff.exec(['-i','in.mp4','-vf','ass=subs.ass:fontsdir=/fonts','-c:v','libx264','-preset','veryfast','-crf',String($('crf').value),'-pix_fmt','yuv420p','-c:a','copy','-movflags','+faststart','out.mp4']); if(!ffExporting)return;
-    const data=await ff.readFile('out.mp4'); const blob=new Blob([data.buffer],{type:'video/mp4'});
-    setProg('eprog',100);
-    if(destDir){ try{ const fh=await destDir.getFileHandle(name+'.mp4',{create:true}); const w=await fh.createWritable(); await w.write(blob); await w.close(); $('estatus').textContent='Guardado en '+destDir.name+' ✓'; setTimeout(closeExportModal,1200); return; }catch(e){ $('estatus').textContent='No se pudo guardar en la carpeta; descargando…'; } }
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name+'.mp4'; document.body.appendChild(a); a.click(); a.remove();
-    $('estatus').textContent='¡Listo! Se descargó '+name+'.mp4'; $('result').innerHTML='<p style="margin:8px 0 0"><a class="dl" href="'+url+'" download="'+name+'.mp4">⬇ Si no empezó la descarga, tocá acá ('+(blob.size/1048576).toFixed(1)+' MB)</a></p>';
-  }catch(err){ console.error(err); if(ffExporting) $('estatus').innerHTML='⚠️ '+(err.message||err); }
+    const used=new Set([style.font,...segments.map(s=>s.ov?.font).filter(Boolean),...overlays.map(o=>o.font)]);
+    try{ await Promise.all([...used].map(f=>document.fonts.load('700 40px "'+f+'"'))); }catch(e){}
+    const canvas=document.createElement('canvas'); canvas.width=W; canvas.height=H; const ctx=canvas.getContext('2d');
+    const cstream=canvas.captureStream(30);
+    let vstream=null; try{ vstream=video.captureStream?video.captureStream():(video.mozCaptureStream?video.mozCaptureStream():null); }catch(e){}
+    const tracks=[cstream.getVideoTracks()[0]]; if(vstream)vstream.getAudioTracks().forEach(tr=>tracks.push(tr));
+    const mixed=new MediaStream(tracks);
+    const mime=['video/mp4;codecs=h264,aac','video/mp4','video/webm;codecs=vp9','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'';
+    const ext=mime.indexOf('mp4')>=0?'mp4':'webm';
+    const chunks=[]; let rec;
+    try{ rec=new MediaRecorder(mixed,mime?{mimeType:mime,videoBitsPerSecond:Math.min(16e6,Math.round(W*H*4))}:undefined); }
+    catch(e){ throw new Error('No se pudo iniciar la grabación: '+(e.message||e)); }
+    rec.ondataavailable=ev=>{ if(ev.data&&ev.data.size)chunks.push(ev.data); };
+    const stopped=new Promise(res=>{ rec.onstop=res; });
+    let completed=false; video.addEventListener('ended',()=>{completed=true;},{once:true});
+    $('estatus').textContent='Grabando en tiempo real… (dura lo que el video; suena el audio)';
+    video.pause(); video.currentTime=0;
+    await new Promise(r=>{ const on=()=>{ video.removeEventListener('seeked',on); r(); }; video.addEventListener('seeked',on); setTimeout(r,600); });
+    let raf2=null; const draw=()=>{ if(!ffExporting)return; try{ctx.drawImage(video,0,0,W,H);}catch(e){} drawOverlaysCanvas(ctx,video.currentTime,W,H); if(video.duration)setProg('eprog',Math.min(99,video.currentTime/video.duration*100)); raf2=requestAnimationFrame(draw); };
+    rec.start(); draw(); try{ await video.play(); }catch(e){}
+    await new Promise(res=>{ const iv=setInterval(()=>{ if(completed||!ffExporting){ clearInterval(iv); res(); } },150); });
+    if(raf2)cancelAnimationFrame(raf2);
+    try{ if(rec.state!=='inactive')rec.stop(); }catch(e){}
+    await stopped; video.pause();
+    if(!completed){ $('estatus').textContent='Cancelado.'; setProg('eprog',0); ffExporting=false; $('expGo').disabled=false; $('expName').disabled=false; return; }
+    const blob=new Blob(chunks,{type:mime||'video/webm'}); setProg('eprog',100);
+    if(destDir){ try{ const fh=await destDir.getFileHandle(name+'.'+ext,{create:true}); const w=await fh.createWritable(); await w.write(blob); await w.close(); $('estatus').textContent='Guardado en '+destDir.name+' ✓'; setTimeout(closeExportModal,1200); ffExporting=false; $('expGo').disabled=false; $('expName').disabled=false; return; }catch(e){} }
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name+'.'+ext; document.body.appendChild(a); a.click(); a.remove();
+    $('estatus').textContent='¡Listo! Se descargó '+name+'.'+ext+(ext==='webm'?' (WebM)':'');
+    $('result').innerHTML='<p style="margin:8px 0 0"><a class="dl" href="'+url+'" download="'+name+'.'+ext+'">⬇ Si no empezó la descarga, tocá acá ('+(blob.size/1048576).toFixed(1)+' MB)</a></p>';
+  }catch(err){ console.error(err); $('estatus').innerHTML='⚠️ '+(err.message||err); }
   finally{ ffExporting=false; $('expGo').disabled=false; $('expName').disabled=false; }
 }
 
