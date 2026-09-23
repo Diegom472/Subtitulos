@@ -116,7 +116,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v13</div>
+  <div class="tag">v14</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -207,7 +207,9 @@
     <h3>Exportar video</h3>
     <label>Nombre del archivo</label>
     <input type="text" id="expName" value="subtitulado">
-    <div class="hint" id="expDest" style="margin-top:6px">Se guardará en Descargas con este nombre.</div>
+    <label style="margin-top:10px">Carpeta de destino</label>
+    <div class="row tight" style="align-items:center"><span class="chip mono" id="destName" style="flex:1">Descargas</span><button id="pickDir" class="btn ghost" style="padding:7px 12px;font-size:12px">Elegir carpeta</button></div>
+    <div class="hint" id="expDest" style="margin-top:6px"></div>
     <div class="bar" id="expBarWrap" style="display:none;margin-top:10px"><i id="eprog"></i></div>
     <div class="status" id="estatus"></div>
     <div id="result"></div>
@@ -379,8 +381,8 @@ async function getFFmpeg(){
   const [m,u]=await Promise.all([import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js'),import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js')]);
   _fetchFile=u.fetchFile; const ff=new m.FFmpeg();
   const base='https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-  const wrap=URL.createObjectURL(new Blob(['import "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js";'],{type:'text/javascript'}));
-  const load=ff.load({classWorkerURL:wrap,coreURL:await u.toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await u.toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
+  const wbase='https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+  const load=ff.load({classWorkerURL:await u.toBlobURL(wbase+'/worker.js','text/javascript'),coreURL:await u.toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await u.toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
   await Promise.race([load,new Promise((_,rej)=>setTimeout(()=>rej(new Error('ffmpeg tardó demasiado en cargar. Revisá tu conexión y reintentá.')),90000))]);
   ffmpeg=ff; return ffmpeg;
 }
@@ -624,14 +626,16 @@ function renderOvs(){
 function esc(s){return s.replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 /* === exportar === */
-let ffExporting=false;
+let ffExporting=false, destDir=null;
 $('exportBtn').addEventListener('click',openExportModal);
 $('expCancel').addEventListener('click',cancelExport);
 $('expGo').addEventListener('click',doExport);
+$('pickDir').addEventListener('click',async()=>{ if(!window.showDirectoryPicker)return; try{ destDir=await window.showDirectoryPicker(); $('destName').textContent=destDir.name; }catch(e){} });
 function openExportModal(){
   if(!videoFile){ $('status').textContent='Primero cargá un video.'; return; }
   if(!segments.length&&!overlays.length){ $('status').textContent='No hay subtítulos ni carteles para exportar.'; return; }
-  $('expDest').textContent = window.showSaveFilePicker ? 'Al continuar vas a poder elegir carpeta y nombre.' : 'Se guardará en Descargas con este nombre.';
+  if(window.showDirectoryPicker){ $('pickDir').style.display='inline-block'; $('expDest').textContent='Elegí una carpeta, o se descargará a Descargas.'; }
+  else{ $('pickDir').style.display='none'; $('destName').textContent='Descargas'; $('expDest').textContent='En este dispositivo el navegador no permite elegir carpeta; se guarda en Descargas.'; }
   $('expBarWrap').style.display='none'; setProg('eprog',0); $('estatus').textContent=''; $('result').innerHTML='';
   $('expGo').disabled=false; $('expName').disabled=false;
   $('expModal').classList.remove('hidden');
@@ -643,11 +647,6 @@ function cancelExport(){
 }
 async function doExport(){
   const name=(($('expName').value||'subtitulado').trim().replace(/[\\/:*?"<>|]+/g,'_'))||'subtitulado';
-  let handle=null;
-  if(window.showSaveFilePicker){
-    try{ handle=await window.showSaveFilePicker({suggestedName:name+'.mp4',types:[{description:'Video MP4',accept:{'video/mp4':['.mp4']}}]}); }
-    catch(e){ if(e&&e.name==='AbortError') return; }
-  }
   $('expGo').disabled=true; $('expName').disabled=true;
   $('expBarWrap').style.display='block'; setProg('eprog',0); $('result').innerHTML=''; ffExporting=true;
   try{
@@ -665,8 +664,9 @@ async function doExport(){
     await ff.exec(['-i','in.mp4','-vf','ass=subs.ass:fontsdir=/fonts','-c:v','libx264','-preset','veryfast','-crf',String($('crf').value),'-pix_fmt','yuv420p','-c:a','copy','-movflags','+faststart','out.mp4']); if(!ffExporting)return;
     const data=await ff.readFile('out.mp4'); const blob=new Blob([data.buffer],{type:'video/mp4'});
     setProg('eprog',100);
-    if(handle){ const w=await handle.createWritable(); await w.write(blob); await w.close(); $('estatus').textContent='Guardado ✓'; setTimeout(closeExportModal,1000); }
-    else { const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name+'.mp4'; document.body.appendChild(a); a.click(); a.remove(); $('estatus').textContent='¡Listo! Se descargó '+name+'.mp4'; $('result').innerHTML='<p style="margin:8px 0 0"><a class="dl" href="'+url+'" download="'+name+'.mp4">⬇ Si no empezó la descarga, tocá acá ('+(blob.size/1048576).toFixed(1)+' MB)</a></p>'; }
+    if(destDir){ try{ const fh=await destDir.getFileHandle(name+'.mp4',{create:true}); const w=await fh.createWritable(); await w.write(blob); await w.close(); $('estatus').textContent='Guardado en '+destDir.name+' ✓'; setTimeout(closeExportModal,1200); return; }catch(e){ $('estatus').textContent='No se pudo guardar en la carpeta; descargando…'; } }
+    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name+'.mp4'; document.body.appendChild(a); a.click(); a.remove();
+    $('estatus').textContent='¡Listo! Se descargó '+name+'.mp4'; $('result').innerHTML='<p style="margin:8px 0 0"><a class="dl" href="'+url+'" download="'+name+'.mp4">⬇ Si no empezó la descarga, tocá acá ('+(blob.size/1048576).toFixed(1)+' MB)</a></p>';
   }catch(err){ console.error(err); if(ffExporting) $('estatus').innerHTML='⚠️ '+(err.message||err); }
   finally{ ffExporting=false; $('expGo').disabled=false; $('expName').disabled=false; }
 }
