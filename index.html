@@ -28,10 +28,10 @@
   @media(max-width:900px){main{grid-template-columns:1fr}}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
-  .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:200px;touch-action:none}
+  .stage{position:relative;background:#000;border-radius:10px;overflow:hidden;display:flex;justify-content:center;align-items:center;touch-action:none}
   video{max-width:100%;max-height:60vh;display:block}
-  #placeholder{color:var(--muted);font-size:14px;text-align:center;padding:30px 16px}
-  #overlay{position:absolute;inset:0}
+  #placeholder{color:var(--muted);font-size:14px;text-align:center;padding:40px 16px;min-height:150px;display:flex;align-items:center}
+  #overlay{position:absolute}
   .cap,.ovNode{position:absolute;left:50%;top:85%;transform:translate(-50%,-50%);text-align:center;max-width:92%;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.15;cursor:grab;user-select:none}
   .cap:active,.ovNode:active{cursor:grabbing}
   .cap span{display:inline-block;transition:transform .09s ease}
@@ -89,7 +89,7 @@
   .ruler .tick.major{border-top-color:var(--muted)}
   .ruler .tnum{position:absolute;left:3px;font-size:8px;color:var(--muted)}
   .stage{flex:1}
-  #guides{position:absolute;inset:0;pointer-events:none;z-index:5}
+  #guides{position:absolute;pointer-events:none;z-index:5}
   .guide{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--accent)}
   .guide .glabel{position:absolute;left:0;top:-9px;background:var(--accent);color:#04122e;font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;pointer-events:auto;cursor:ns-resize;white-space:nowrap}
   .guide .gx{position:absolute;right:0;top:-9px;background:var(--danger);color:#fff;font-size:9px;padding:1px 6px;border-radius:3px;pointer-events:auto;cursor:pointer}
@@ -116,7 +116,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v15</div>
+  <div class="tag">v16</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -403,6 +403,9 @@ function switchTab(t){$('tabStyle').classList.toggle('on',t==='style');$('tabTex
 video.addEventListener('timeupdate',render);
 video.addEventListener('loadedmetadata',render);
 window.addEventListener('resize',render);
+function syncOverlay(){ const l=video.offsetLeft,t=video.offsetTop,w=video.offsetWidth,h=video.offsetHeight; [overlayBox,$('guides')].forEach(el=>{ if(!el)return; el.style.left=l+'px'; el.style.top=t+'px'; el.style.width=w+'px'; el.style.height=h+'px'; }); }
+try{ new ResizeObserver(()=>syncOverlay()).observe(video); }catch(e){}
+window.addEventListener('resize',syncOverlay);
 video.addEventListener('play',()=>{ if(!raf) raf=requestAnimationFrame(loop); });
 $('playBtn').addEventListener('click',()=>{ video.play(); });
 $('pauseBtn').addEventListener('click',()=>{ video.pause(); });
@@ -412,7 +415,7 @@ function loop(){ if(video.paused||video.ended){raf=null;return;} render(); raf=r
 const seek=$('seek');
 function fmtT(t){t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+String(s).padStart(2,'0');}
 let seeking=false;
-video.addEventListener('loadedmetadata',()=>{ seek.max=video.duration||0; $('tdur').textContent=fmtT(video.duration); renderRuler(); renderGuides(); renderTrack(); });
+video.addEventListener('loadedmetadata',()=>{ seek.max=video.duration||0; $('tdur').textContent=fmtT(video.duration); syncOverlay(); renderRuler(); renderGuides(); renderTrack(); });
 video.addEventListener('timeupdate',()=>{ if(!seeking){ seek.value=video.currentTime; $('tcur').textContent=fmtT(video.currentTime); } });
 seek.addEventListener('input',()=>{ seeking=true; const t=parseFloat(seek.value); video.currentTime=t; $('tcur').textContent=fmtT(t); render(); });
 seek.addEventListener('change',()=>{ seeking=false; });
@@ -770,7 +773,7 @@ function setProg(id,p){$(id).style.width=p+'%';}
 
 /* === tamaño de la app === */
 const appEl=document.getElementById('app'), zoomEl=$('appZoom');
-function applyZoom(v){ appEl.style.zoom=(v/100); $('appZoomVal').textContent=v+'%'; try{localStorage.setItem('ctZoom',v);}catch(e){} }
+function applyZoom(v){ appEl.style.zoom=(v/100); $('appZoomVal').textContent=v+'%'; try{localStorage.setItem('ctZoom',v);}catch(e){} try{syncOverlay();}catch(e){} }
 let z=130; try{const s=localStorage.getItem('ctZoom'); if(s)z=parseInt(s);}catch(e){}
 zoomEl.value=z; applyZoom(z);
 zoomEl.addEventListener('input',()=>applyZoom(parseInt(zoomEl.value)));
