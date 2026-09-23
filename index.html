@@ -112,7 +112,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v11</div>
+  <div class="tag">v12</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -142,6 +142,8 @@
       <button id="openBtn" class="btn big">📂 Abrir</button>
       <button id="playBtn" class="btn ghost big" disabled>▶ Play</button>
       <button id="pauseBtn" class="btn ghost big" disabled>⏸ Pausa</button>
+      <button id="undoBtn" class="btn ghost big" disabled>↶ Deshacer</button>
+      <button id="redoBtn" class="btn ghost big" disabled>↷ Rehacer</button>
       <button id="exportBtn" class="btn amber big" disabled>⬇ Exportar</button>
     </div>
     <input type="file" id="fileInput" accept="video/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden">
@@ -369,7 +371,7 @@ async function getFFmpeg(){
 }
 
 /* === controles de diseño === */
-function bind(id,prop,after){$(id).addEventListener('input',e=>{const el=e.target;style[prop]=el.type==='checkbox'?el.checked:(el.type==='range'||el.type==='number'?parseFloat(el.value):el.value);after&&after();lastSub=null;cap.dataset.seg='';render();});}
+function bind(id,prop,after){$(id).addEventListener('input',e=>{markHistory();const el=e.target;style[prop]=el.type==='checkbox'?el.checked:(el.type==='range'||el.type==='number'?parseFloat(el.value):el.value);after&&after();lastSub=null;cap.dataset.seg='';render();});}
 bind('font','font');bind('subAnim','subAnim');bind('karaoke','karaoke');bind('hiColor','hiColor');bind('color','color');bind('ocolor','ocolor');bind('obord','obord');bind('bcolor','bcolor');bind('bold','bold');
 bind('size','size',()=>$('sizeVal').textContent=style.size+'%');bind('posv','posv');
 bind('bop','bop',()=>$('bopVal').textContent=style.bop+'%');bind('box','box',()=>$('boxOpts').style.opacity=style.box?'1':'.4');
@@ -410,7 +412,7 @@ function renderRuler(){
 $('ruler').addEventListener('click',e=>{
   const rect=e.currentTarget.getBoundingClientRect();
   const pv=Math.max(0,Math.min(100,(e.clientY-rect.top)/rect.height*100));
-  guides.push({id:'g'+Date.now(),posv:Math.round(pv)}); renderGuides();
+  pushHistory(); guides.push({id:'g'+Date.now(),posv:Math.round(pv)}); renderGuides();
 });
 function renderGuides(){
   const g=$('guides'); if(!g)return; g.innerHTML='';
@@ -425,7 +427,7 @@ function renderGuides(){
       const up=()=>{ h.removeEventListener('pointermove',move); h.removeEventListener('pointerup',up); };
       h.addEventListener('pointermove',move); h.addEventListener('pointerup',up);
     });
-    h.addEventListener('click',()=>{ if(!moved){ guides=guides.filter(x=>x.id!==gd.id); renderGuides(); } });
+    h.addEventListener('click',()=>{ if(!moved){ pushHistory(); guides=guides.filter(x=>x.id!==gd.id); renderGuides(); } });
   });
 }
 
@@ -450,7 +452,7 @@ function updatePlayhead(){ const ph=$('playhead'),dur=video.duration||0; if(ph&&
 function nodeEdge(handle,seg,which){
   if(!handle)return;
   handle.addEventListener('pointerdown',e=>{
-    e.stopPropagation(); e.preventDefault(); handle.setPointerCapture(e.pointerId);
+    e.stopPropagation(); e.preventDefault(); pushHistory(); handle.setPointerCapture(e.pointerId);
     const rect=$('track').getBoundingClientRect(); const dur=video.duration||1;
     const move=ev=>{ let tm=Math.max(0,Math.min(dur,(ev.clientX-rect.left)/rect.width*dur));
       if(which==='l') seg.start=Math.min(tm,seg.end-0.1); else seg.end=Math.max(tm,seg.start+0.1);
@@ -468,10 +470,32 @@ function highlightCard(id){
   if(!$('paneText').classList.contains('hidden')) c.scrollIntoView({block:'nearest'});
 }
 
-/* barra espaciadora = play/pausa */
+/* teclado: espacio = play/pausa, Ctrl+Z / Shift+Ctrl+Z = deshacer/rehacer */
 document.addEventListener('keydown',e=>{
-  if(e.code==='Space'){ const t=document.activeElement&&document.activeElement.tagName; if(t==='INPUT'||t==='TEXTAREA'||t==='SELECT')return; if(!videoFile)return; e.preventDefault(); if(video.paused)video.play(); else video.pause(); }
+  const el=document.activeElement,t=el&&el.tagName,typing=(t==='INPUT'||t==='TEXTAREA'||t==='SELECT');
+  if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); if(e.shiftKey)redo(); else undo(); return; }
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); return; }
+  if((e.code==='Space'||e.key===' ')&&!typing){ if(!videoFile)return; e.preventDefault(); if(t==='BUTTON'&&el.blur)el.blur(); if(video.paused)video.play(); else video.pause(); }
 });
+
+/* historial deshacer/rehacer */
+let undoStack=[], redoStack=[], _coalesce=false, _ct=null;
+function snapshot(){ return JSON.stringify({segments,overlays,style,guides,rowsPerSub}); }
+function restore(s){ const o=JSON.parse(s); segments=o.segments||[]; overlays=o.overlays||[]; style=o.style||style; guides=o.guides||[]; rowsPerSub=o.rowsPerSub||2; syncControls(); renderSegs(); renderOvs(); renderGuides(); lastSub=null; cap.dataset.seg=''; render(); }
+function pushHistory(){ undoStack.push(snapshot()); if(undoStack.length>80)undoStack.shift(); redoStack.length=0; updateUndoUI(); }
+function markHistory(){ if(_coalesce)return; _coalesce=true; pushHistory(); clearTimeout(_ct); _ct=setTimeout(()=>{_coalesce=false;},600); }
+function undo(){ if(!undoStack.length)return; redoStack.push(snapshot()); restore(undoStack.pop()); updateUndoUI(); }
+function redo(){ if(!redoStack.length)return; undoStack.push(snapshot()); restore(redoStack.pop()); updateUndoUI(); }
+function updateUndoUI(){ const u=$('undoBtn'),r=$('redoBtn'); if(u)u.disabled=!undoStack.length; if(r)r.disabled=!redoStack.length; }
+function syncControls(){
+  $('font').value=style.font;$('subAnim').value=style.subAnim;$('karaoke').checked=!!style.karaoke;$('hiColor').value=style.hiColor;
+  $('size').value=style.size;$('sizeVal').textContent=style.size+'%';
+  $('color').value=style.color;$('ocolor').value=style.ocolor;$('obord').value=style.obord;
+  $('box').checked=!!style.box;$('boxOpts').style.opacity=style.box?'1':'.4';$('bcolor').value=style.bcolor;$('bop').value=style.bop;$('bopVal').textContent=style.bop+'%';
+  $('bold').checked=!!style.bold;$('posv').value=style.posv;$('safe').value=style.safe;$('safeVal').textContent=style.safe+'%';$('rows').value=rowsPerSub;
+}
+$('undoBtn').addEventListener('click',undo);
+$('redoBtn').addEventListener('click',redo);
 function effStyle(seg){return seg&&seg.ov?{...style,...seg.ov}:style;}
 function styleNode(node,s,text,isOverlay){
   const h=video.clientHeight||360,px=s.size/100*h;
@@ -504,12 +528,12 @@ function playAnim(node,kind){if(!kind||kind==='none')return;node.style.animation
 function hexA(hex,a){const n=hex.replace('#','');return'rgba('+parseInt(n.substr(0,2),16)+','+parseInt(n.substr(2,2),16)+','+parseInt(n.substr(4,2),16)+','+a+')';}
 
 /* === arrastrar === */
-function dragHandler(node,onMove){node.addEventListener('pointerdown',e=>{e.preventDefault();node.setPointerCapture(e.pointerId);const vr=video.getBoundingClientRect();const move=ev=>{let ph=(ev.clientX-vr.left)/vr.width*100,pv=(ev.clientY-vr.top)/vr.height*100;onMove(Math.max(2,Math.min(98,ph)),Math.max(2,Math.min(98,pv)));};const up=()=>{node.removeEventListener('pointermove',move);node.removeEventListener('pointerup',up);};node.addEventListener('pointermove',move);node.addEventListener('pointerup',up);});}
+function dragHandler(node,onMove){node.addEventListener('pointerdown',e=>{e.preventDefault();pushHistory();node.setPointerCapture(e.pointerId);const vr=video.getBoundingClientRect();const move=ev=>{let ph=(ev.clientX-vr.left)/vr.width*100,pv=(ev.clientY-vr.top)/vr.height*100;onMove(Math.max(2,Math.min(98,ph)),Math.max(2,Math.min(98,pv)));};const up=()=>{node.removeEventListener('pointermove',move);node.removeEventListener('pointerup',up);};node.addEventListener('pointermove',move);node.addEventListener('pointerup',up);});}
 dragHandler(cap,(ph,pv)=>{style.posv=Math.round(pv);$('posv').value=style.posv;render();});
 function makeDraggable(node,o){dragHandler(node,(ph,pv)=>{o.posh=Math.round(ph);o.posv=Math.round(pv);const c=document.querySelector('.card[data-id="'+o.id+'"]');if(c){const a=c.querySelector('[data-k="posh"]'),b=c.querySelector('[data-k="posv"]');if(a)a.value=o.posh;if(b)b.value=o.posv;}render();});}
 
 /* === segmentos === */
-$('addSeg').addEventListener('click',()=>{const t=video.currentTime||0;segments.push({id:'s'+Date.now(),start:+t.toFixed(2),end:+(t+2).toFixed(2),text:'Nuevo subtítulo',words:null,ov:null});segments.sort((a,b)=>a.start-b.start);renderSegs();render();});
+$('addSeg').addEventListener('click',()=>{pushHistory();const t=video.currentTime||0;segments.push({id:'s'+Date.now(),start:+t.toFixed(2),end:+(t+2).toFixed(2),text:'Nuevo subtítulo',words:null,ov:null});segments.sort((a,b)=>a.start-b.start);renderSegs();render();});
 function splitSegment(seg,pos){
   const txt=seg.text||''; pos=Math.max(0,Math.min(txt.length,pos|0));
   const before=txt.slice(0,pos), after=txt.slice(pos);
@@ -529,11 +553,12 @@ function splitSegment(seg,pos){
     s1={...seg,text:b,end:mid,words:null};
     s2={id:'s'+Date.now()+Math.random().toString(36).slice(2,5),start:mid,end:seg.end,text:a,words:null,ov:seg.ov?{...seg.ov}:null};
   }
-  segments.splice(idx,1,s1,s2);
+  pushHistory(); segments.splice(idx,1,s1,s2);
   renderSegs(); cap.dataset.seg=''; render();
 }
 function reduceSegment(seg){
   const idx=segments.indexOf(seg); if(idx<=0)return;
+  pushHistory();
   const prev=segments[idx-1];
   prev.text=((prev.text||'')+' '+(seg.text||'')).replace(/\s+/g,' ').trim();
   prev.end=seg.end;
@@ -546,31 +571,31 @@ function renderSegs(){
   segments.forEach(seg=>{
     const d=document.createElement('div');d.className='card';d.dataset.id=seg.id;
     d.innerHTML='<div class="t mono"><input type="number" step="0.1" value="'+seg.start.toFixed(2)+'" data-k="start"><span class="chip">→</span><input type="number" step="0.1" value="'+seg.end.toFixed(2)+'" data-k="end"><button class="x">✕</button></div><textarea data-k="text">'+esc(seg.text)+'</textarea><div class="row tight" style="margin-top:8px;align-items:center"><label class="mini" style="margin:0;flex:1"><input type="checkbox" class="ovToggle" style="width:auto;vertical-align:-2px" '+(seg.ov?'checked':'')+'> Estilo propio</label><button class="splitBtn" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:4px 9px;font-size:11px;border-radius:7px">Separar</button><button class="reduceBtn" style="background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:4px 9px;font-size:11px;border-radius:7px">Reducir</button></div><div class="ov '+(seg.ov?'show':'')+'"><div class="field2"><div><label class="mini">Fuente</label><select data-ov="font">'+FONTS.map(f=>'<option '+((seg.ov?.font||style.font)===f.name?'selected':'')+'>'+f.name+'</option>').join('')+'</select></div><div><label class="mini">Tamaño %</label><input type="number" step="0.5" data-ov="size" value="'+(seg.ov?.size??style.size)+'"></div></div><div class="field2" style="margin-top:8px"><div><label class="mini">Color</label><input type="color" data-ov="color" value="'+(seg.ov?.color??style.color)+'"></div><div><label class="mini">Pos. V %</label><input type="number" data-ov="posv" value="'+(seg.ov?.posv??style.posv)+'"></div></div></div>';
-    d.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('input',()=>{const k=inp.dataset.k;seg[k]=(k==='text')?inp.value:(parseFloat(inp.value)||0);cap.dataset.seg='';render();}));
+    d.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('input',()=>{markHistory();const k=inp.dataset.k;seg[k]=(k==='text')?inp.value:(parseFloat(inp.value)||0);cap.dataset.seg='';render();}));
     const ta=d.querySelector('textarea');
     const track=()=>{ta._pos=ta.selectionStart;};
     ['keyup','click','select','input'].forEach(ev=>ta.addEventListener(ev,track));
     d.querySelector('.splitBtn').addEventListener('click',()=>{seg.text=ta.value;splitSegment(seg,(ta._pos!=null?ta._pos:ta.selectionStart)||0);});
     d.querySelector('.reduceBtn').addEventListener('click',()=>{reduceSegment(seg);});
-    d.querySelector('.x').addEventListener('click',()=>{segments=segments.filter(s=>s.id!==seg.id);renderSegs();render();});
-    const tg=d.querySelector('.ovToggle');tg.addEventListener('change',()=>{seg.ov=tg.checked?{font:style.font,size:style.size,color:style.color,posv:style.posv}:null;d.querySelector('.ov').classList.toggle('show',tg.checked);render();});
-    d.querySelectorAll('[data-ov]').forEach(inp=>inp.addEventListener('input',()=>{if(!seg.ov)return;const k=inp.dataset.ov;seg.ov[k]=inp.type==='number'?parseFloat(inp.value):inp.value;render();}));
+    d.querySelector('.x').addEventListener('click',()=>{pushHistory();segments=segments.filter(s=>s.id!==seg.id);renderSegs();render();});
+    const tg=d.querySelector('.ovToggle');tg.addEventListener('change',()=>{pushHistory();seg.ov=tg.checked?{font:style.font,size:style.size,color:style.color,posv:style.posv}:null;d.querySelector('.ov').classList.toggle('show',tg.checked);render();});
+    d.querySelectorAll('[data-ov]').forEach(inp=>inp.addEventListener('input',()=>{if(!seg.ov)return;markHistory();const k=inp.dataset.ov;seg.ov[k]=inp.type==='number'?parseFloat(inp.value):inp.value;render();}));
     box.appendChild(d);
   });
   renderTrack();
 }
 
 /* === carteles === */
-$('addCard').addEventListener('click',()=>{const t=video.currentTime||0;overlays.push({id:'o'+Date.now(),text:'Tu texto',start:+t.toFixed(2),end:+(t+3).toFixed(2),font:'Anton',size:8,color:'#FFFFFF',ocolor:'#000000',obord:3,box:false,bcolor:'#000000',bop:60,bold:true,anim:'pop',posh:50,posv:20});renderOvs();render();});
+$('addCard').addEventListener('click',()=>{pushHistory();const t=video.currentTime||0;overlays.push({id:'o'+Date.now(),text:'Tu texto',start:+t.toFixed(2),end:+(t+3).toFixed(2),font:'Anton',size:8,color:'#FFFFFF',ocolor:'#000000',obord:3,box:false,bcolor:'#000000',bop:60,bold:true,anim:'pop',posh:50,posv:20});renderOvs();render();});
 function renderOvs(){
   const box=$('ovs');box.innerHTML='';$('cardCount').textContent=overlays.length?overlays.length+' carteles':'';$('cardHint').style.display=overlays.length?'none':'block';
   overlays.forEach(o=>{
     const d=document.createElement('div');d.className='card';d.dataset.id=o.id;
     d.innerHTML='<div class="t mono"><input type="number" step="0.1" value="'+o.start.toFixed(2)+'" data-k="start"><span class="chip">→</span><input type="number" step="0.1" value="'+o.end.toFixed(2)+'" data-k="end"><button class="x">✕</button></div><textarea data-k="text">'+esc(o.text)+'</textarea><div class="field2" style="margin-top:8px"><div><label class="mini">Fuente</label><select data-k="font">'+FONTS.map(f=>'<option '+(o.font===f.name?'selected':'')+'>'+f.name+'</option>').join('')+'</select></div><div><label class="mini">Animación</label><select data-k="anim">'+ANIMS.map(a=>'<option value="'+a.id+'" '+(o.anim===a.id?'selected':'')+'>'+a.label+'</option>').join('')+'</select></div></div><div style="margin-top:8px"><label class="mini">Tamaño <span class="val szv">'+o.size+'%</span></label><input type="range" min="2" max="14" step="0.5" data-k="size" value="'+o.size+'"></div><div class="field3" style="margin-top:8px"><div><label class="mini">Texto</label><input type="color" data-k="color" value="'+o.color+'"></div><div><label class="mini">Borde</label><input type="color" data-k="ocolor" value="'+o.ocolor+'"></div><div><label class="mini">Grosor</label><input type="range" min="0" max="10" step="0.5" data-k="obord" value="'+o.obord+'"></div></div><div style="margin-top:10px"><label class="mini"><input type="checkbox" data-k="box" style="width:auto;vertical-align:-2px" '+(o.box?'checked':'')+'> Caja de fondo</label><div class="field2 boxOpts" style="margin-top:6px;opacity:'+(o.box?'1':'.4')+'"><div><label class="mini">Color caja</label><input type="color" data-k="bcolor" value="'+o.bcolor+'"></div><div><label class="mini">Opacidad <span class="val bopv">'+o.bop+'%</span></label><input type="range" min="0" max="100" data-k="bop" value="'+o.bop+'"></div></div></div><div style="margin-top:10px"><label class="mini"><input type="checkbox" data-k="bold" style="width:auto;vertical-align:-2px" '+(o.bold?'checked':'')+'> Negrita</label></div><div class="row" style="margin-top:8px;align-items:flex-start"><div style="flex:1"><label class="mini">Posición horizontal</label><input type="range" min="2" max="98" data-k="posh" value="'+o.posh+'"><label class="mini" style="margin-top:6px">Posición vertical</label><input type="range" min="2" max="98" data-k="posv" value="'+o.posv+'"></div><div><label class="mini">Rápido</label><div class="anchor" data-anchor></div></div></div>';
     const grid=d.querySelector('[data-anchor]');
-    [['↖',10,12],['↑',50,12],['↗',90,12],['←',10,50],['•',50,50],['→',90,50],['↙',10,88],['↓',50,88],['↘',90,88]].forEach(([s,ph,pv])=>{const b=document.createElement('button');b.textContent=s;b.onclick=()=>{o.posh=ph;o.posv=pv;d.querySelector('[data-k="posh"]').value=ph;d.querySelector('[data-k="posv"]').value=pv;render();};grid.appendChild(b);});
-    d.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('input',()=>{const k=inp.dataset.k;o[k]=inp.type==='checkbox'?inp.checked:(inp.type==='number'||inp.type==='range'?parseFloat(inp.value):inp.value);if(k==='size')d.querySelector('.szv').textContent=o.size+'%';if(k==='bop')d.querySelector('.bopv').textContent=o.bop+'%';if(k==='box')d.querySelector('.boxOpts').style.opacity=o.box?'1':'.4';activeOv.delete(o.id);render();}));
-    d.querySelector('.x').addEventListener('click',()=>{overlays=overlays.filter(x=>x.id!==o.id);renderOvs();render();});
+    [['↖',10,12],['↑',50,12],['↗',90,12],['←',10,50],['•',50,50],['→',90,50],['↙',10,88],['↓',50,88],['↘',90,88]].forEach(([s,ph,pv])=>{const b=document.createElement('button');b.textContent=s;b.onclick=()=>{pushHistory();o.posh=ph;o.posv=pv;d.querySelector('[data-k="posh"]').value=ph;d.querySelector('[data-k="posv"]').value=pv;render();};grid.appendChild(b);});
+    d.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('input',()=>{markHistory();const k=inp.dataset.k;o[k]=inp.type==='checkbox'?inp.checked:(inp.type==='number'||inp.type==='range'?parseFloat(inp.value):inp.value);if(k==='size')d.querySelector('.szv').textContent=o.size+'%';if(k==='bop')d.querySelector('.bopv').textContent=o.bop+'%';if(k==='box')d.querySelector('.boxOpts').style.opacity=o.box?'1':'.4';activeOv.delete(o.id);render();}));
+    d.querySelector('.x').addEventListener('click',()=>{pushHistory();overlays=overlays.filter(x=>x.id!==o.id);renderOvs();render();});
     box.appendChild(d);
   });
 }
