@@ -103,6 +103,9 @@
   .modal{position:fixed;inset:0;z-index:80;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:18px}
   .modalbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;width:100%;max-width:420px}
   .modalbox h3{margin:0 0 12px;font-size:16px}
+  #margins{position:absolute;pointer-events:none;z-index:6}
+  .mline{position:absolute;top:0;bottom:0;width:0;border-left:1px dashed rgba(255,180,84,.85)}
+  .mline .mh{position:absolute;top:0;left:-9px;width:18px;height:18px;background:var(--accent2);color:#3a2400;border-radius:4px;pointer-events:auto;cursor:ew-resize;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
 </style>
 </head>
 <body>
@@ -116,7 +119,7 @@
 <div id="app">
 <header>
   <div class="logo">Casa<span>Tecno</span> · Subtítulos</div>
-  <div class="tag">v17</div>
+  <div class="tag">v18</div>
   <div class="grow"></div>
   <button id="install">Instalar app</button>
   <div class="device">Motor: <b id="dev">…</b></div>
@@ -131,6 +134,7 @@
         <video id="video" playsinline class="hidden"></video>
         <div id="overlay" class="hidden"><div id="cap" class="cap"></div></div>
         <div id="guides"></div>
+        <div id="margins"></div>
         <div id="placeholder">Ningún video cargado.<br>Tocá <b>Abrir</b> para elegir uno de tu teléfono.</div>
       </div>
     </div>
@@ -184,8 +188,7 @@
       <div class="field3"><div><label>Texto</label><input type="color" id="color" value="#FFFFFF"></div><div><label>Borde</label><input type="color" id="ocolor" value="#000000"></div><div><label class="mini">Grosor</label><input type="range" id="obord" min="0" max="10" step="0.5" value="3"></div></div>
       <div class="field" style="margin-top:12px"><label><input type="checkbox" id="box" style="width:auto;vertical-align:-2px"> Caja de fondo</label><div class="field2" id="boxOpts" style="margin-top:8px;opacity:.4"><div><label class="mini">Color caja</label><input type="color" id="bcolor" value="#000000"></div><div><label class="mini">Opacidad <span class="val" id="bopVal">60%</span></label><input type="range" id="bop" min="0" max="100" value="60"></div></div></div>
       <div class="field"><label style="margin-bottom:8px"><input type="checkbox" id="bold" checked style="width:auto;vertical-align:-2px"> Negrita</label><label>Posición vertical</label><input type="range" id="posv" min="2" max="98" value="85"></div>
-      <div class="field"><label>Margen seguro <span class="val" id="safeVal">5%</span></label><input type="range" id="safe" min="0" max="20" value="5"><div class="hint" style="margin-top:2px">Los subtítulos nunca se pasan de este margen a cada lado.</div></div>
-      <div class="hint">El diseño se aplica a <b>todos</b> los subtítulos. Para cambiar uno solo, andá a <b>Texto</b> → "estilo propio".</div>
+      <div class="hint">El tamaño solo agranda/achica el texto (no cambia los renglones). Los <b>renglones</b> se eligen antes de generar. El <b>ancho</b> lo ajustás con las manijas naranjas arriba del video.</div>
     </div>
 
     <div id="paneText" class="hidden">
@@ -246,7 +249,7 @@ const FONTS=[
 const ANIMS=[{id:'none',label:'Ninguna'},{id:'fade',label:'Fundido'},{id:'pop',label:'Aparecer (pop)'},{id:'zoom',label:'Zoom'},{id:'up',label:'Desde abajo'},{id:'left',label:'Desde izquierda'},{id:'right',label:'Desde derecha'}];
 
 let videoFile=null, segments=[], overlays=[];
-let style={font:'Montserrat',subAnim:'pop',karaoke:false,hiColor:'#FFE14D',size:6,color:'#FFFFFF',ocolor:'#000000',obord:3,box:false,bcolor:'#000000',bop:60,bold:true,posv:85,safe:5};
+let style={font:'Montserrat',subAnim:'pop',karaoke:false,hiColor:'#FFE14D',size:6,color:'#FFFFFF',ocolor:'#000000',obord:3,box:false,bcolor:'#000000',bop:60,bold:true,posv:85,mL:4,mR:4};
 let transcriber=null, modelLoadedId=null, ffmpeg=null, lastSub=null, raf=null;
 const activeOv=new Set();
 let rowsPerSub=2;
@@ -268,7 +271,7 @@ function loadVideo(file){
   videoFile=file; video.src=URL.createObjectURL(file);
   video.classList.remove('hidden'); overlayBox.classList.remove('hidden'); $('placeholder').classList.add('hidden');
   $('controls').classList.remove('hidden'); $('timeline').classList.remove('hidden');
-  renderRuler(); renderGuides();
+  renderRuler(); renderGuides(); renderMargins();
   segments=[]; overlays=[]; renderSegs(); renderOvs();
   $('exportBtn').disabled=false; $('playBtn').disabled=false; $('pauseBtn').disabled=false;
   $('status').textContent='Video cargado. Tocá "Generar subtítulos".';
@@ -276,7 +279,7 @@ function loadVideo(file){
 
 /* === WHISPER === */
 $('transcribe').addEventListener('click', transcribe);
-$('rows').addEventListener('change',e=>{ rowsPerSub=parseInt(e.target.value)||2; });
+$('rows').addEventListener('change',e=>{ rowsPerSub=parseInt(e.target.value)||2; lastSub=null; cap.dataset.seg=''; render(); });
 async function pickDevice(){
   if(navigator.gpu){ try{ const a=await navigator.gpu.requestAdapter(); if(a) return 'webgpu'; }catch(e){} }
   return 'wasm';
@@ -323,7 +326,8 @@ async function transcribe(){
 function wordsPerSub(){
   const W=video.videoWidth||1080,H=video.videoHeight||1920;
   const fontPx=Math.max(8,style.size/100*H);
-  const usableW=W*0.90, avgCharW=fontPx*0.52;
+  const boxFrac=Math.max(0.12,(100-(style.mL||0)-(style.mR||0))/100);
+  const usableW=W*boxFrac, avgCharW=fontPx*0.52;
   const charsPerRow=Math.max(6,usableW/avgCharW);
   const wordsPerRow=Math.max(1,charsPerRow/6);
   return Math.max(1,Math.min(16,Math.round(wordsPerRow*rowsPerSub)));
@@ -348,6 +352,7 @@ function splitByWords(seg,max){
   for(let i=0;i<total;i+=max){const chunk=parts.slice(i,i+max);out.push({id:'s'+i+'_'+Date.now()+Math.random().toString(36).slice(2,5),start:seg.start+dur*(i/total),end:seg.start+dur*Math.min(total,i+chunk.length)/total,text:chunk.join(' '),words:null,ov:null});}
   return out;
 }
+function splitRows(words,n){ words=words||[]; n=Math.max(1,Math.min(n,words.length||1)); const per=Math.ceil(words.length/n)||1; const lines=[]; for(let i=0;i<words.length;i+=per)lines.push(words.slice(i,i+per)); return lines.length?lines:[[]]; }
 function kwords(seg){
   if(seg.words&&seg.words.length){const j=seg.words.map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();if(j===seg.text.replace(/\s+/g,' ').trim())return seg.words;}
   const parts=seg.text.split(/\s+/).filter(Boolean);const dur=Math.max(0.3,seg.end-seg.start),step=dur/Math.max(1,parts.length);
@@ -392,7 +397,6 @@ function bind(id,prop,after){$(id).addEventListener('input',e=>{markHistory();co
 bind('font','font');bind('subAnim','subAnim');bind('karaoke','karaoke');bind('hiColor','hiColor');bind('color','color');bind('ocolor','ocolor');bind('obord','obord');bind('bcolor','bcolor');bind('bold','bold');
 bind('size','size',()=>$('sizeVal').textContent=style.size+'%');bind('posv','posv');
 bind('bop','bop',()=>$('bopVal').textContent=style.bop+'%');bind('box','box',()=>$('boxOpts').style.opacity=style.box?'1':'.4');
-bind('safe','safe',()=>$('safeVal').textContent=style.safe+'%');
 $('crf').addEventListener('input',e=>{const v=e.target.value;$('crfVal').textContent=v+' · '+(v<=16?'máxima':v<=20?'alta':v<=24?'media':'liviana');});
 
 /* === tabs === */
@@ -403,7 +407,7 @@ function switchTab(t){$('tabStyle').classList.toggle('on',t==='style');$('tabTex
 video.addEventListener('timeupdate',render);
 video.addEventListener('loadedmetadata',render);
 window.addEventListener('resize',render);
-function syncOverlay(){ const st=$('stage'); if(!st)return; const sw=st.offsetWidth||1,sh=st.offsetHeight||1,vw=video.offsetWidth,vh=video.offsetHeight; const L=(sw-vw)/2/sw*100,T=(sh-vh)/2/sh*100,Wp=vw/sw*100,Hp=vh/sh*100; [overlayBox,$('guides')].forEach(el=>{ if(!el)return; el.style.left=L+'%'; el.style.top=T+'%'; el.style.width=Wp+'%'; el.style.height=Hp+'%'; }); }
+function syncOverlay(){ const st=$('stage'); if(!st)return; const sw=st.offsetWidth||1,sh=st.offsetHeight||1,vw=video.offsetWidth,vh=video.offsetHeight; const L=(sw-vw)/2/sw*100,T=(sh-vh)/2/sh*100,Wp=vw/sw*100,Hp=vh/sh*100; [overlayBox,$('guides'),$('margins')].forEach(el=>{ if(!el)return; el.style.left=L+'%'; el.style.top=T+'%'; el.style.width=Wp+'%'; el.style.height=Hp+'%'; }); }
 try{ new ResizeObserver(()=>syncOverlay()).observe(video); }catch(e){}
 window.addEventListener('resize',syncOverlay);
 video.addEventListener('play',()=>{ if(!raf) raf=requestAnimationFrame(loop); });
@@ -415,7 +419,7 @@ function loop(){ if(video.paused||video.ended){raf=null;return;} render(); raf=r
 const seek=$('seek');
 function fmtT(t){t=Math.max(0,t||0);const m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+String(s).padStart(2,'0');}
 let seeking=false;
-video.addEventListener('loadedmetadata',()=>{ seek.max=video.duration||0; $('tdur').textContent=fmtT(video.duration); syncOverlay(); renderRuler(); renderGuides(); renderTrack(); });
+video.addEventListener('loadedmetadata',()=>{ seek.max=video.duration||0; $('tdur').textContent=fmtT(video.duration); syncOverlay(); renderRuler(); renderGuides(); renderMargins(); renderTrack(); });
 video.addEventListener('timeupdate',()=>{ if(!seeking){ seek.value=video.currentTime; $('tcur').textContent=fmtT(video.currentTime); } });
 seek.addEventListener('input',()=>{ seeking=true; const t=parseFloat(seek.value); video.currentTime=t; $('tcur').textContent=fmtT(t); render(); });
 seek.addEventListener('change',()=>{ seeking=false; });
@@ -459,6 +463,23 @@ function renderGuides(){
 }
 
 /* timeline de nodos */
+function renderMargins(){
+  const g=$('margins'); if(!g)return; g.innerHTML='';
+  const mk=(pct,side)=>{ const ln=document.createElement('div'); ln.className='mline'; ln.style.left=pct+'%'; const h=document.createElement('div'); h.className='mh'; h.textContent=side==='L'?'▶':'◀'; ln.appendChild(h); g.appendChild(ln); dragMargin(h,ln,side); };
+  mk(style.mL||0,'L'); mk(100-(style.mR||0),'R');
+}
+function dragMargin(handle,ln,side){
+  handle.addEventListener('pointerdown',ev=>{ ev.preventDefault(); ev.stopPropagation(); pushHistory(); handle.setPointerCapture(ev.pointerId);
+    const rect=$('margins').getBoundingClientRect();
+    const move=e2=>{ let p=Math.max(0,Math.min(100,(e2.clientX-rect.left)/rect.width*100));
+      if(side==='L'){ style.mL=Math.round(Math.max(0,Math.min(p,100-(style.mR||0)-8))); ln.style.left=style.mL+'%'; }
+      else { style.mR=Math.round(Math.max(0,Math.min(100-p,100-(style.mL||0)-8))); ln.style.left=(100-style.mR)+'%'; }
+      lastSub=null; cap.dataset.seg=''; render();
+    };
+    const up=()=>{ handle.removeEventListener('pointermove',move); handle.removeEventListener('pointerup',up); };
+    handle.addEventListener('pointermove',move); handle.addEventListener('pointerup',up);
+  });
+}
 function renderTrack(){
   const tr=$('track'); if(!tr)return; const dur=video.duration||0;
   tr.innerHTML='';
@@ -519,7 +540,7 @@ function syncControls(){
   $('size').value=style.size;$('sizeVal').textContent=style.size+'%';
   $('color').value=style.color;$('ocolor').value=style.ocolor;$('obord').value=style.obord;
   $('box').checked=!!style.box;$('boxOpts').style.opacity=style.box?'1':'.4';$('bcolor').value=style.bcolor;$('bop').value=style.bop;$('bopVal').textContent=style.bop+'%';
-  $('bold').checked=!!style.bold;$('posv').value=style.posv;$('safe').value=style.safe;$('safeVal').textContent=style.safe+'%';$('rows').value=rowsPerSub;
+  $('bold').checked=!!style.bold;$('posv').value=style.posv;$('rows').value=rowsPerSub; try{renderMargins();}catch(e){}
 }
 $('undoBtn').addEventListener('click',undo);
 $('redoBtn').addEventListener('click',redo);
@@ -528,22 +549,30 @@ function styleNode(node,s,text,isOverlay){
   const h=video.clientHeight||360,px=s.size/100*h;
   if(text!==null)node.textContent=text;
   node.style.fontFamily="'"+s.font+"', sans-serif";node.style.fontSize=px+'px';node.style.fontWeight=s.bold?800:500;node.style.color=s.color;
-  node.style.left=(isOverlay?(s.posh??50):50)+'%';
-  if(!isOverlay){const m=style.safe||0;node.style.maxWidth=(100-2*m)+'%';node.style.top=Math.max(m,Math.min(100-m,(s.posv??85)))+'%';}
-  else{node.style.maxWidth='';node.style.top=(s.posv??85)+'%';}
+  if(isOverlay){ node.style.whiteSpace='pre-wrap'; node.style.maxWidth='92%'; node.style.left=(s.posh??50)+'%'; }
+  else { node.style.whiteSpace='pre'; node.style.maxWidth='none'; node.style.left=(((style.mL||0)+(100-(style.mR||0)))/2)+'%'; }
+  node.style.top=(s.posv??85)+'%';
   const ob=s.obord??0;node.style.webkitTextStroke=ob>0?(ob*0.6)+'px '+s.ocolor:'0';node.style.paintOrder='stroke fill';
   if(s.box){node.style.background=hexA(s.bcolor,(s.bop??60)/100);node.style.padding=(px*0.18)+'px '+(px*0.35)+'px';node.style.borderRadius=(px*0.12)+'px';node.style.textShadow='none';}
   else{node.style.background='transparent';node.style.padding='0';node.style.textShadow=ob>0?'0 2px 6px rgba(0,0,0,.5)':'none';}
 }
-function buildKaraoke(seg){const ws=kwords(seg);cap._words=ws;cap.dataset.seg=seg.id;cap.style.setProperty('--hi',style.hiColor);cap.innerHTML=ws.map((w,i)=>'<span data-i="'+i+'">'+esc(w.text)+'</span>').join(' ');cap._hi=-1;}
+function buildKaraoke(seg,lines){
+  const ws=kwords(seg); cap._words=ws; cap.dataset.seg=seg.id; cap.style.setProperty('--hi',style.hiColor);
+  let idx=0,html='';
+  lines.forEach((line,li)=>{ if(li)html+='<br>'; line.forEach((w,wi)=>{ html+='<span data-i="'+idx+'">'+esc(w)+'</span>'+(wi<line.length-1?' ':''); idx++; }); });
+  cap.innerHTML=html; cap._hi=-1;
+}
 function paintHighlight(seg){const ws=cap._words;if(!ws)return;const t=video.currentTime;let idx=ws.findIndex(w=>t>=w.start&&t<w.end);if(idx<0)idx=(t>=ws[ws.length-1].start)?ws.length-1:0;if(idx===cap._hi)return;cap._hi=idx;const sp=cap.children;for(let i=0;i<sp.length;i++)sp[i].className=(i===idx)?'hi':'';}
 function render(){
   const t=video.currentTime;
   const seg=segments.find(s=>t>=s.start&&t<=s.end)||null;
   if(seg){
     const st=effStyle(seg),changed=seg.id!==lastSub;
-    if(style.karaoke){styleNode(cap,st,null,false);if(cap.dataset.seg!==seg.id)buildKaraoke(seg);paintHighlight(seg);}
-    else{styleNode(cap,st,seg.text,false);cap.dataset.seg='';}
+    const wobjs=style.karaoke?kwords(seg):null;
+    const words=wobjs?wobjs.map(w=>w.text):(seg.text.split(/\s+/).filter(Boolean));
+    const lines=splitRows(words,rowsPerSub);
+    if(style.karaoke){styleNode(cap,st,null,false);if(cap.dataset.seg!==seg.id)buildKaraoke(seg,lines);paintHighlight(seg);}
+    else{styleNode(cap,st,lines.map(l=>l.join(' ')).join('\n'),false);cap.dataset.seg='';}
     cap.style.display='block';
     if(changed){playAnim(cap,style.subAnim);lastSub=seg.id;highlightCard(seg.id);}
   }else{cap.style.display='none';lastSub=null;cap.dataset.seg='';}
@@ -654,18 +683,13 @@ function roundRect(ctx,x,y,w,h,r){ r=Math.max(0,Math.min(r,h/2,w/2)); ctx.beginP
 function drawStyledText(ctx,s,item,t,W,H,isOverlay){
   const px=Math.max(6,s.size/100*H), family=s.font, weight=s.bold?700:400;
   ctx.font=weight+' '+px+'px "'+family+'", sans-serif'; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-  const margin=isOverlay?0:(style.safe||0);
-  const maxW=(isOverlay?0.92:(1-2*margin/100))*W;
-  const cx=(isOverlay?(s.posh??50):50)/100*W;
-  const cy=(isOverlay?(s.posv??20):Math.max(margin,Math.min(100-margin,(s.posv??85))))/100*H;
+  const cx=(isOverlay?(s.posh??50):(((style.mL||0)+(100-(style.mR||0)))/2))/100*W;
+  const cy=(isOverlay?(s.posv??20):(s.posv??85))/100*H;
   const lineH=px*1.18, karaoke=!isOverlay&&style.karaoke;
   let lines;
-  if(karaoke){
-    const ws=kwords(item); let act=ws.findIndex(w=>t>=w.start&&t<w.end); if(act<0)act=(t>=ws[ws.length-1].start)?ws.length-1:0;
-    lines=[]; let cur=[],curw=0;
-    ws.forEach((w,i)=>{ const wd=ctx.measureText((cur.length?' ':'')+w.text).width; if(curw+wd>maxW&&cur.length){ lines.push(cur); cur=[]; curw=0; } cur.push({text:w.text,active:i===act}); curw+=ctx.measureText((cur.length>1?' ':'')+w.text).width; });
-    if(cur.length)lines.push(cur);
-  } else { lines=wrapLines(ctx,item.text,maxW).map(l=>[{text:l,active:false}]); }
+  if(isOverlay){ lines=wrapLines(ctx,item.text,0.92*W).map(l=>[{text:l,active:false}]); }
+  else if(karaoke){ const ws=kwords(item); let act=ws.findIndex(w=>t>=w.start&&t<w.end); if(act<0)act=(t>=ws[ws.length-1].start)?ws.length-1:0; let idx=0; lines=splitRows(ws.map(w=>w.text),rowsPerSub).map(r=>r.map(txt=>({text:txt,active:(idx++)===act}))); }
+  else { lines=splitRows(item.text.split(/\s+/).filter(Boolean),rowsPerSub).map(r=>[{text:r.join(' '),active:false}]); }
   const blockH=lines.length*lineH;
   const kind=isOverlay?s.anim:style.subAnim;
   const p=Math.max(0,Math.min(1,(t-item.start)/0.35)), e=1-Math.pow(1-p,2);
